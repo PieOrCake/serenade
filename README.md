@@ -6,6 +6,8 @@ A Guild Wars 2 addon for [Raidcore Nexus](https://raidcore.gg/Nexus) that automa
 
 This addon has been 100% created in [Windsurf](https://windsurf.com/) using Claude. I understand that some folks have a moral, financial or political objection to creating software using an LLM. I just wanted to make a useful tool for the GW2 community, and this was the only way I could do it.
 
+If an LLM creating software upsets you, then perhaps this repo isn't for you. Move on, and enjoy your day.
+
 ## Features
 
 - **Music Player** — play/pause, stop, next/previous, shuffle, repeat (off/all/one)
@@ -84,4 +86,4 @@ Produces `build/Serenade.dll`.
 
 ## License
 
-MIT
+This software is provided as-is, with absolutely no warranty of any kind. Use at your own risk. It might delete your files, melt your PC, burn your house down, or cause world peace. Probably not that last one, but we can hope.

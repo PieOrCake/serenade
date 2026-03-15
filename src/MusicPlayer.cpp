@@ -328,9 +328,6 @@ void MusicPlayer::SendNoteKeys(const std::vector<int>& keys) {
         if (vk == 0) continue;
         SendKeyUp(vk);
     }
-
-    // Small gap after release so GW2 can process before next keypress
-    Sleep(15);
 }
 
 void MusicPlayer::SendOctaveChange(Octave target) {
@@ -339,29 +336,62 @@ void MusicPlayer::SendOctaveChange(Octave target) {
     const char* octNames[] = {"Low", "Mid", "High"};
     DebugLog("  OCTAVE: " + std::string(octNames[(int)m_CurrentOctave]) + " -> " + octNames[(int)target]);
 
-    int keyHoldMs = 40;     // hold key long enough for GW2 to register
-    int interPressMs = 80;  // wait between presses for GW2 to process
+    // Self-correcting absolute positioning via batched SendInput:
+    // Always reset to Low (key 9 clamps there) then go up to target.
+    // All keypresses are batched into a single SendInput call for speed.
+    // This prevents drift from missed keypresses while being fast enough
+    // for arpeggios (~10ms total instead of ~850ms with individual calls).
+    WORD downVk = m_KeyConfig.octaveDownKey;
+    WORD upVk = m_KeyConfig.octaveUpKey;
+    WORD downScan = (WORD)MapVirtualKeyA(downVk, MAPVK_VK_TO_VSC);
+    WORD upScan = (WORD)MapVirtualKeyA(upVk, MAPVK_VK_TO_VSC);
 
-    // Use relative positioning: just press up/down the needed number of steps.
-    // This is much faster than resetting to Low every time.
-    int diff = static_cast<int>(target) - static_cast<int>(m_CurrentOctave);
-    WORD vk = (diff > 0) ? m_KeyConfig.octaveUpKey : m_KeyConfig.octaveDownKey;
-    int presses = (diff > 0) ? diff : -diff;
+    // Press key 9 enough times to guarantee Low from any state (+2 safety margin)
+    int downPresses = static_cast<int>(m_CurrentOctave) + 2;
+    int upPresses = static_cast<int>(target);
+    int totalPresses = downPresses + upPresses;
 
-    for (int i = 0; i < presses; i++) {
-        if (m_ThreadStop.load()) return;
-        DebugLog("  KEY: vk=" + VKToDisplayName(vk));
-        SendKeyDown(vk);
-        Sleep(keyHoldMs);
-        SendKeyUp(vk);
-        Sleep(interPressMs);
-        if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
-            DebugLog("Enter key detected in octave change — stopping");
-            m_ThreadStop.store(true);
-            m_State.store(PlaybackState::Stopped);
-            return;
-        }
+    // 2 INPUT events per press (down + up)
+    std::vector<INPUT> inputs(totalPresses * 2);
+    int idx = 0;
+
+    // Down presses to reach Low
+    for (int i = 0; i < downPresses; i++) {
+        INPUT& down = inputs[idx++];
+        down = {};
+        down.type = INPUT_KEYBOARD;
+        down.ki.wVk = downVk;
+        down.ki.wScan = downScan;
+        down.ki.dwFlags = 0;
+
+        INPUT& up = inputs[idx++];
+        up = {};
+        up.type = INPUT_KEYBOARD;
+        up.ki.wVk = downVk;
+        up.ki.wScan = downScan;
+        up.ki.dwFlags = KEYEVENTF_KEYUP;
     }
+
+    // Up presses to reach target
+    for (int i = 0; i < upPresses; i++) {
+        INPUT& down = inputs[idx++];
+        down = {};
+        down.type = INPUT_KEYBOARD;
+        down.ki.wVk = upVk;
+        down.ki.wScan = upScan;
+        down.ki.dwFlags = 0;
+
+        INPUT& up = inputs[idx++];
+        up = {};
+        up.type = INPUT_KEYBOARD;
+        up.ki.wVk = upVk;
+        up.ki.wScan = upScan;
+        up.ki.dwFlags = KEYEVENTF_KEYUP;
+    }
+
+    SendInput((UINT)inputs.size(), inputs.data(), sizeof(INPUT));
+    // Small settle time for GW2 to process the octave change before the next note
+    Sleep(10);
 
     m_CurrentOctave = target;
 }
@@ -560,7 +590,6 @@ void MusicPlayer::PlaybackThread() {
         // Execute all consecutive 0-duration events immediately (octave
         // changes, etc.) — these run BEFORE we wait for the next timed
         // event, so they complete during the previous note's sustain.
-        auto zeroStart = std::chrono::steady_clock::now();
         while (eventIdx < (int)song->events.size() &&
                song->events[eventIdx].durationBeats == 0.0f &&
                !m_ThreadStop.load()) {
@@ -576,16 +605,6 @@ void MusicPlayer::PlaybackThread() {
         }
         if (m_ThreadStop.load()) break;
         if (eventIdx >= (int)song->events.size()) continue;
-
-        // Compensate timeline for real time consumed by 0-duration events
-        // (octave changes). Without this, notes after octave changes would
-        // rapid-fire to "catch up" and GW2 would drop them.
-        auto zeroElapsed = std::chrono::duration<double, std::milli>(
-            std::chrono::steady_clock::now() - zeroStart).count();
-        if (zeroElapsed > 5.0) {
-            pauseOffset += zeroElapsed;
-            DebugLog("  Timeline shift: +" + std::to_string((int)zeroElapsed) + "ms for octave change");
-        }
 
         // Wait until the next timed event's scheduled time
         if (!waitUntil(accumulatedMs)) continue;
