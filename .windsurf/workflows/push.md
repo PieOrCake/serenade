@@ -4,7 +4,7 @@ description: Push to GitHub - regenerate song index, build, commit and push
 
 ## Steps
 
-1. Regenerate `songs/index.json` from `.ahk` files in `songs/` directory:
+1. Regenerate `music/index.json` from `.ahk` files in `music/` directory:
 // turbo
 ```bash
 bash /home/tony/Dev/serenade/generate_song_index.sh

@@ -620,7 +620,7 @@ static bool HttpDownloadFile(const std::string& url, const std::string& destPath
     return file.good();
 }
 
-static const char* kGitHubRawBase = "https://raw.githubusercontent.com/PieOrCake/serenade/main/songs/";
+static const char* kGitHubRawBase = "https://raw.githubusercontent.com/PieOrCake/serenade/main/music/";
 
 void PlaylistEditor::FetchOnlineSongs() {
     m_OnlineFetching = true;

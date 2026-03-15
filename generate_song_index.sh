@@ -2,7 +2,7 @@
 # Scans songs/ directory and generates songs/index.json with metadata from each .ahk file.
 # Run this before every git push.
 
-SONGS_DIR="$(dirname "$0")/songs"
+SONGS_DIR="$(dirname "$0")/music"
 INDEX_FILE="$SONGS_DIR/index.json"
 
 echo "[" > "$INDEX_FILE"
