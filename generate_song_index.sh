@@ -18,12 +18,17 @@ for f in "$SONGS_DIR"/*.ahk; do
     instrument=""
     part=""
 
-    # Parse # metadata comment lines from top of file
+    # Parse ; or # metadata comment lines from top of file
     while IFS= read -r line; do
         trimmed="${line#"${line%%[![:space:]]*}"}"  # ltrim
-        [[ "$trimmed" == \#* ]] || break
-        meta="${trimmed#\#}"
-        meta="${meta#"${meta%%[![:space:]]*}"}"  # ltrim after #
+        if [[ "$trimmed" == \;* ]]; then
+            meta="${trimmed#\;}"
+        elif [[ "$trimmed" == \#* ]]; then
+            meta="${trimmed#\#}"
+        else
+            break
+        fi
+        meta="${meta#"${meta%%[![:space:]]*}"}"  # ltrim after comment char
         case "$meta" in
             title:*)     title="${meta#title:}"; title="${title#"${title%%[![:space:]]*}"}" ;;
             author:*)    author="${meta#author:}"; author="${author#"${author%%[![:space:]]*}"}" ;;

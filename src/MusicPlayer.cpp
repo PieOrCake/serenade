@@ -328,6 +328,9 @@ void MusicPlayer::SendNoteKeys(const std::vector<int>& keys) {
         if (vk == 0) continue;
         SendKeyUp(vk);
     }
+
+    // Small gap after release so GW2 can process before next keypress
+    Sleep(15);
 }
 
 void MusicPlayer::SendOctaveChange(Octave target) {
@@ -336,38 +339,21 @@ void MusicPlayer::SendOctaveChange(Octave target) {
     const char* octNames[] = {"Low", "Mid", "High"};
     DebugLog("  OCTAVE: " + std::string(octNames[(int)m_CurrentOctave]) + " -> " + octNames[(int)target]);
 
-    // Self-correcting absolute positioning:
-    // GW2 key 9 clamps at Low, so we always reset to Low first via key 9,
-    // then go up to the target via key 0.  This prevents drift from missed
-    // key presses from ever pushing GW2 into chord modes (Minor/Major).
-    // Safety margin: 2 extra key 9 presses beyond what's theoretically needed.
-    int keyHoldMs = 50;     // hold key long enough for GW2 to register
-    int interPressMs = 120; // wait between presses for GW2 to process
+    int keyHoldMs = 40;     // hold key long enough for GW2 to register
+    int interPressMs = 80;  // wait between presses for GW2 to process
 
-    int downPresses = static_cast<int>(m_CurrentOctave) + 2;
-    for (int i = 0; i < downPresses; i++) {
-        if (m_ThreadStop.load()) return;
-        DebugLog("  KEY: vk=" + VKToDisplayName(m_KeyConfig.octaveDownKey));
-        SendKeyDown(m_KeyConfig.octaveDownKey);
-        Sleep(keyHoldMs);
-        SendKeyUp(m_KeyConfig.octaveDownKey);
-        Sleep(interPressMs);
-        if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
-            DebugLog("Enter key detected in octave change — stopping");
-            m_ThreadStop.store(true);
-            m_State.store(PlaybackState::Stopped);
-            return;
-        }
-    }
+    // Use relative positioning: just press up/down the needed number of steps.
+    // This is much faster than resetting to Low every time.
+    int diff = static_cast<int>(target) - static_cast<int>(m_CurrentOctave);
+    WORD vk = (diff > 0) ? m_KeyConfig.octaveUpKey : m_KeyConfig.octaveDownKey;
+    int presses = (diff > 0) ? diff : -diff;
 
-    // Now at Low. Go up to target.
-    int upPresses = static_cast<int>(target);
-    for (int i = 0; i < upPresses; i++) {
+    for (int i = 0; i < presses; i++) {
         if (m_ThreadStop.load()) return;
-        DebugLog("  KEY: vk=" + VKToDisplayName(m_KeyConfig.octaveUpKey));
-        SendKeyDown(m_KeyConfig.octaveUpKey);
+        DebugLog("  KEY: vk=" + VKToDisplayName(vk));
+        SendKeyDown(vk);
         Sleep(keyHoldMs);
-        SendKeyUp(m_KeyConfig.octaveUpKey);
+        SendKeyUp(vk);
         Sleep(interPressMs);
         if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
             DebugLog("Enter key detected in octave change — stopping");
@@ -574,6 +560,7 @@ void MusicPlayer::PlaybackThread() {
         // Execute all consecutive 0-duration events immediately (octave
         // changes, etc.) — these run BEFORE we wait for the next timed
         // event, so they complete during the previous note's sustain.
+        auto zeroStart = std::chrono::steady_clock::now();
         while (eventIdx < (int)song->events.size() &&
                song->events[eventIdx].durationBeats == 0.0f &&
                !m_ThreadStop.load()) {
@@ -589,6 +576,16 @@ void MusicPlayer::PlaybackThread() {
         }
         if (m_ThreadStop.load()) break;
         if (eventIdx >= (int)song->events.size()) continue;
+
+        // Compensate timeline for real time consumed by 0-duration events
+        // (octave changes). Without this, notes after octave changes would
+        // rapid-fire to "catch up" and GW2 would drop them.
+        auto zeroElapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - zeroStart).count();
+        if (zeroElapsed > 5.0) {
+            pauseOffset += zeroElapsed;
+            DebugLog("  Timeline shift: +" + std::to_string((int)zeroElapsed) + "ms for octave change");
+        }
 
         // Wait until the next timed event's scheduled time
         if (!waitUntil(accumulatedMs)) continue;

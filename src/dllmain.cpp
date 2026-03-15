@@ -79,6 +79,7 @@ AddonDefinition_t AddonDef{};
 AddonAPI_t* APIDefs = nullptr;
 bool g_PlayerWindowVisible = false;
 static std::string g_DebugLogPath;
+static ImFont* g_TitleFont = nullptr;
 
 // Player and editor
 static Serenade::MusicPlayer g_Player;
@@ -112,6 +113,11 @@ static void FormatTime(float seconds, char* buf, size_t bufSize) {
     int min = total / 60;
     int sec = total % 60;
     snprintf(buf, bufSize, "%d:%02d", min, sec);
+}
+
+// Font callback from Nexus
+static void OnTitleFontReceived(const char* aIdentifier, void* aFont) {
+    g_TitleFont = (ImFont*)aFont;
 }
 
 // Helper: scan and load songs from music/ directory
@@ -200,6 +206,10 @@ void AddonLoad(AddonAPI_t* aApi) {
     // Register escape-to-close for both windows
     APIDefs->GUI_RegisterCloseOnEscape("Serenade", &g_PlayerWindowVisible);
     APIDefs->GUI_RegisterCloseOnEscape("Serenade - Playlist Editor", g_PlaylistEditor.GetVisiblePtr());
+
+    // Load a crisp title font at 2x default size
+    APIDefs->Fonts_AddFromFile("SERENADE_TITLE", ImGui::GetFontSize() * 2.0f,
+        "C:\\Windows\\Fonts\\segoeui.ttf", OnTitleFontReceived, nullptr);
 
     APIDefs->Log(LOGL_INFO, "Serenade", "Addon loaded successfully");
 }
@@ -444,7 +454,7 @@ void AddonRender() {
     ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.14f, 0.13f, 0.11f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.30f, 0.25f, 0.15f, 0.5f));
 
-    ImGui::SetNextWindowSize(ImVec2(340, 215), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340, 235), ImGuiCond_FirstUseEver);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar;
 
     if (!ImGui::Begin("Serenade", &g_PlayerWindowVisible, flags)) {
@@ -471,32 +481,46 @@ void AddonRender() {
         }
     }
 
-    // ── Row 1: Centered song title (2x scale, scrolling if too wide) ──
-    float titleScale = 2.0f;
+    // ── Row 1: Centered song title (large font, scrolling if too wide) ──
+    // Use crisp title font if loaded, otherwise fall back to scale
+    bool hasTitleFont = (g_TitleFont != nullptr && g_TitleFont->IsLoaded());
     float normalLineH = ImGui::GetTextLineHeightWithSpacing();
-    float scaledLineH = normalLineH * titleScale;
+    float scaledLineH;
+
+    if (hasTitleFont) {
+        ImGui::PushFont(g_TitleFont);
+        scaledLineH = ImGui::GetTextLineHeightWithSpacing();
+        ImGui::PopFont();
+    } else {
+        scaledLineH = normalLineH * 2.0f;
+    }
+
     float infoHeight = scaledLineH + normalLineH; // title + metadata
     ImVec2 infoStart = ImGui::GetCursorPos();
+
+    // Helper macros to push/pop the title font or fall back to scale
+    #define PUSH_TITLE_FONT() do { if (hasTitleFont) ImGui::PushFont(g_TitleFont); else ImGui::SetWindowFontScale(2.0f); } while(0)
+    #define POP_TITLE_FONT()  do { if (hasTitleFont) ImGui::PopFont(); else ImGui::SetWindowFontScale(1.0f); } while(0)
 
     const Serenade::Song* song = g_Player.GetCurrentSong();
 
     if (song) {
-        // Measure title at 2x scale
-        ImGui::SetWindowFontScale(titleScale);
+        // Measure title at large size
+        PUSH_TITLE_FONT();
         float titleW = ImGui::CalcTextSize(song->title.c_str()).x;
-        ImGui::SetWindowFontScale(1.0f);
+        POP_TITLE_FONT();
 
         float padX = ImGui::GetStyle().WindowPadding.x;
         float regionW = availW; // clipping width
 
         if (titleW <= regionW) {
             // Fits — center it
-            ImGui::SetWindowFontScale(titleScale);
+            PUSH_TITLE_FONT();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
             ImGui::SetCursorPosX((availW - titleW) * 0.5f + padX);
             ImGui::Text("%s", song->title.c_str());
             ImGui::PopStyleColor();
-            ImGui::SetWindowFontScale(1.0f);
+            POP_TITLE_FONT();
         } else {
             // Too wide — scroll back and forth
             static double s_ScrollTimer = 0.0;
@@ -531,12 +555,12 @@ void AddonRender() {
             ImVec2 clipMax = ImVec2(clipMin.x + regionW, clipMin.y + scaledLineH);
             ImGui::PushClipRect(clipMin, clipMax, true);
 
-            ImGui::SetWindowFontScale(titleScale);
+            PUSH_TITLE_FONT();
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
             ImGui::SetCursorPosX(padX - offsetX);
             ImGui::Text("%s", song->title.c_str());
             ImGui::PopStyleColor();
-            ImGui::SetWindowFontScale(1.0f);
+            POP_TITLE_FONT();
 
             ImGui::PopClipRect();
         }
@@ -544,13 +568,9 @@ void AddonRender() {
         // Metadata — centered, soft grey (normal scale)
         std::string meta;
         if (!song->author.empty()) meta = song->author;
-        if (!song->instrument.empty() || !song->part.empty()) {
+        if (!song->instrument.empty()) {
             if (!meta.empty()) meta += "  \xC2\xB7  ";
-            if (!song->instrument.empty()) meta += song->instrument;
-            if (!song->part.empty()) {
-                if (!song->instrument.empty()) meta += " \xC2\xB7 ";
-                meta += song->part;
-            }
+            meta += song->instrument;
         }
         if (!meta.empty()) {
             float metaW = ImGui::CalcTextSize(meta.c_str()).x;
@@ -560,17 +580,17 @@ void AddonRender() {
             ImGui::PopStyleColor();
         }
     } else {
-        ImGui::SetWindowFontScale(titleScale);
+        PUSH_TITLE_FONT();
         float noW = ImGui::CalcTextSize("No track loaded").x;
-        ImGui::SetWindowFontScale(1.0f);
-
-        ImGui::SetWindowFontScale(titleScale);
         ImGui::SetCursorPosX((availW - noW) * 0.5f + ImGui::GetStyle().WindowPadding.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.40f, 0.40f, 0.45f, 1.0f));
         ImGui::Text("No track loaded");
         ImGui::PopStyleColor();
-        ImGui::SetWindowFontScale(1.0f);
+        POP_TITLE_FONT();
     }
+
+    #undef PUSH_TITLE_FONT
+    #undef POP_TITLE_FONT
 
     // Reserve fixed height for info area so controls stay stable
     float usedH = ImGui::GetCursorPos().y - infoStart.y;
