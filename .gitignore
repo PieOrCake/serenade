@@ -1,0 +1,24 @@
+# Build output
+build/
+*.dll
+*.lib
+*.o
+*.obj
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.vscode/
+.idea/
+
+# Converter / tools (excluded from repo)
+tools/
+
+# Sample / test music files
+*.ahk
+*.mid
+
+# Runtime directories
+songs/
