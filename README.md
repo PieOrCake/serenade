@@ -12,9 +12,8 @@ If an LLM creating software upsets you, then perhaps this repo isn't for you. Mo
 
 - **Music Player** — play/pause, stop, next/previous, shuffle, repeat (off/all/one)
 - **Playlist Editor** — dual-pane UI with song library and curated playlist
-- **MIDI Converter** — standalone tool to convert MIDI files to playable AHK scripts
 - **Ornate Grand Piano** — tuned for piano playback with chord support and 3 octaves
-- **Customisable Keybindings** — rebind all note, sharp, and octave keys from the Nexus options panel
+- **Track downloading** — download tracks from this repository's music directory from within game.
 
 ## Adding Songs
 

@@ -1,3 +1,11 @@
 [
-  {"file":" Imagine-John_Lennon.ahk","title":"Imagine","author":"John Lennon","instrument":"Piano","part":"","size":23389}
+  {"file":"Bohemian_Rhapsody-Queen.ahk","title":"Bohemian Rhapsody","author":"Queen","instrument":"Piano","part":"","size":61435},
+  {"file":"Fur_Elise-Beethoven.ahk","title":"Fur Elise","author":"Beethoven","instrument":"Piano","part":"","size":20047},
+  {"file":" Imagine-John_Lennon.ahk","title":"Imagine","author":"John Lennon","instrument":"Piano","part":"","size":23389},
+  {"file":"Moonlight_Sonata-Beethoven.ahk","title":"Moonlight Sonata (1st Movement)","author":"Beethoven","instrument":"Piano","part":"","size":34044},
+  {"file":"Never_Gonna_ Give_ You_ Up-Rick_Astley.ahk","title":"Never Gonna Give You Up","author":"Rick Astley","instrument":"Piano","part":"","size":48737},
+  {"file":"Piano_Man-Billy_Joel.ahk","title":"Piano Man","author":"Billy Joel","instrument":"Piano","part":"","size":51543},
+  {"file":"Pirates_of_the_Caribbean.ahk","title":"Pirates of the Caribbean","author":"","instrument":"Piano","part":"","size":20832},
+  {"file":"Stairway_to_Heaven-Led_Zeppelin.ahk","title":"Stairway to Heaven","author":"Led Zeppelin","instrument":"Piano","part":"","size":126581},
+  {"file":"Starlight-Muse.ahk","title":"Starlight","author":"Muse","instrument":"Piano","part":"","size":29093}
 ]
