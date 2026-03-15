@@ -65,6 +65,7 @@ set_target_properties(Serenade PROPERTIES
 target_link_libraries(Serenade
     gdi32
     winmm
+    wininet
 )
 
 # Module definition file for clean DLL export

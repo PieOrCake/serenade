@@ -16,9 +16,8 @@ Makefile
 # Converter / tools (excluded from repo)
 tools/
 
-# Sample / test music files
-*.ahk
-*.mid
+# Sample / test music files in root (songs/ dir is tracked)
+/*.ahk
+/*.mid
 
-# Runtime directories
-songs/
+# Runtime directories (songs/ is tracked for online song distribution)

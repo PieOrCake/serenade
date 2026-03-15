@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdio>
+#include <cmath>
 #include <filesystem>
 #include "../include/nexus/Nexus.h"
 #include "MusicPlayer.h"
@@ -165,6 +166,7 @@ void AddonLoad(AddonAPI_t* aApi) {
 
     // Configure playlist editor
     g_PlaylistEditor.SetRefreshCallback(RefreshSongLibrary);
+    g_PlaylistEditor.SetSongsDirectory(g_SongsDirectory);
 
     // Load saved playlist
     if (addonDir) {
@@ -442,7 +444,7 @@ void AddonRender() {
     ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.14f, 0.13f, 0.11f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.30f, 0.25f, 0.15f, 0.5f));
 
-    ImGui::SetNextWindowSize(ImVec2(340, 195), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340, 215), ImGuiCond_FirstUseEver);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar;
 
     if (!ImGui::Begin("Serenade", &g_PlayerWindowVisible, flags)) {
@@ -469,22 +471,77 @@ void AddonRender() {
         }
     }
 
-    // ── Row 1: Centered song title ──
-    float lineH = ImGui::GetTextLineHeightWithSpacing();
-    float infoHeight = lineH * 2; // title + metadata
+    // ── Row 1: Centered song title (2x scale, scrolling if too wide) ──
+    float titleScale = 2.0f;
+    float normalLineH = ImGui::GetTextLineHeightWithSpacing();
+    float scaledLineH = normalLineH * titleScale;
+    float infoHeight = scaledLineH + normalLineH; // title + metadata
     ImVec2 infoStart = ImGui::GetCursorPos();
 
     const Serenade::Song* song = g_Player.GetCurrentSong();
 
     if (song) {
-        // Title — centered, warm gold
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
+        // Measure title at 2x scale
+        ImGui::SetWindowFontScale(titleScale);
         float titleW = ImGui::CalcTextSize(song->title.c_str()).x;
-        ImGui::SetCursorPosX((availW - titleW) * 0.5f + ImGui::GetStyle().WindowPadding.x);
-        ImGui::Text("%s", song->title.c_str());
-        ImGui::PopStyleColor();
+        ImGui::SetWindowFontScale(1.0f);
 
-        // Metadata — centered, soft grey
+        float padX = ImGui::GetStyle().WindowPadding.x;
+        float regionW = availW; // clipping width
+
+        if (titleW <= regionW) {
+            // Fits — center it
+            ImGui::SetWindowFontScale(titleScale);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
+            ImGui::SetCursorPosX((availW - titleW) * 0.5f + padX);
+            ImGui::Text("%s", song->title.c_str());
+            ImGui::PopStyleColor();
+            ImGui::SetWindowFontScale(1.0f);
+        } else {
+            // Too wide — scroll back and forth
+            static double s_ScrollTimer = 0.0;
+            static std::string s_LastTitle;
+            if (s_LastTitle != song->title) {
+                s_LastTitle = song->title;
+                s_ScrollTimer = 0.0; // reset on track change
+            }
+            s_ScrollTimer += ImGui::GetIO().DeltaTime;
+
+            float overflow = titleW - regionW;
+            // Ping-pong: 40px/sec scroll, pause 1.5s at each end
+            float scrollSpeed = 40.0f;
+            float pauseDur = 1.5f;
+            float scrollDur = overflow / scrollSpeed;
+            float cycleDur = pauseDur + scrollDur + pauseDur + scrollDur;
+            float t = fmodf((float)s_ScrollTimer, cycleDur);
+
+            float offsetX = 0.0f;
+            if (t < pauseDur) {
+                offsetX = 0.0f; // pause at start
+            } else if (t < pauseDur + scrollDur) {
+                offsetX = ((t - pauseDur) / scrollDur) * overflow; // scroll right
+            } else if (t < pauseDur + scrollDur + pauseDur) {
+                offsetX = overflow; // pause at end
+            } else {
+                offsetX = overflow - ((t - pauseDur - scrollDur - pauseDur) / scrollDur) * overflow; // scroll back
+            }
+
+            // Clip to content region
+            ImVec2 clipMin = ImGui::GetCursorScreenPos();
+            ImVec2 clipMax = ImVec2(clipMin.x + regionW, clipMin.y + scaledLineH);
+            ImGui::PushClipRect(clipMin, clipMax, true);
+
+            ImGui::SetWindowFontScale(titleScale);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
+            ImGui::SetCursorPosX(padX - offsetX);
+            ImGui::Text("%s", song->title.c_str());
+            ImGui::PopStyleColor();
+            ImGui::SetWindowFontScale(1.0f);
+
+            ImGui::PopClipRect();
+        }
+
+        // Metadata — centered, soft grey (normal scale)
         std::string meta;
         if (!song->author.empty()) meta = song->author;
         if (!song->instrument.empty() || !song->part.empty()) {
@@ -503,11 +560,16 @@ void AddonRender() {
             ImGui::PopStyleColor();
         }
     } else {
+        ImGui::SetWindowFontScale(titleScale);
         float noW = ImGui::CalcTextSize("No track loaded").x;
+        ImGui::SetWindowFontScale(1.0f);
+
+        ImGui::SetWindowFontScale(titleScale);
         ImGui::SetCursorPosX((availW - noW) * 0.5f + ImGui::GetStyle().WindowPadding.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.40f, 0.40f, 0.45f, 1.0f));
         ImGui::Text("No track loaded");
         ImGui::PopStyleColor();
+        ImGui::SetWindowFontScale(1.0f);
     }
 
     // Reserve fixed height for info area so controls stay stable
@@ -970,7 +1032,7 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef() {
     AddonDef.Load = AddonLoad;
     AddonDef.Unload = AddonUnload;
     AddonDef.Flags = AF_None;
-    AddonDef.Provider = UP_Github;
+    AddonDef.Provider = UP_GitHub;
     AddonDef.UpdateLink = "https://github.com/PieOrCake/serenade";
 
     return &AddonDef;
