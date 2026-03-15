@@ -20,6 +20,7 @@ for f in "$SONGS_DIR"/*.ahk; do
 
     # Parse ; or # metadata comment lines from top of file
     while IFS= read -r line; do
+        line="${line//$'\r'/}"  # strip CR from Windows line endings
         trimmed="${line#"${line%%[![:space:]]*}"}"  # ltrim
         if [[ "$trimmed" == \;* ]]; then
             meta="${trimmed#\;}"

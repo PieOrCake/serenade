@@ -192,12 +192,10 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
         m_ShowOnlinePane = false;
     }
     ImGui::SetNextWindowSize(ImVec2(550, 400), ImGuiCond_FirstUseEver);
-    if (ImGui::BeginPopupModal("Download Songs", nullptr, ImGuiWindowFlags_None)) {
+    bool downloadOpen = true;
+    if (ImGui::BeginPopupModal("Download Songs", &downloadOpen, ImGuiWindowFlags_None)) {
         RenderOnlinePane(player);
-        ImGui::Separator();
-        if (ImGui::Button("Close", ImVec2(120, 0))) {
-            ImGui::CloseCurrentPopup();
-        }
+        if (!downloadOpen) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 
