@@ -35,6 +35,7 @@ struct Song {
     std::string author;         // Original song artist
     std::string instrument;     // Recommended instrument (piano, harp, etc.)
     std::string part;           // Part name for group play (melody, voice, bass, etc.)
+    std::string filepath;       // Source file path on disk
     int bpm;                    // Beats per minute
     std::vector<NoteEvent> events;
 
@@ -69,6 +70,12 @@ Song LoadAHKFile(const std::string& filepath);
 
 // Save a song to a .sng file
 bool SaveSongFile(const std::string& filepath, const Song& song);
+
+// Update metadata (title, author, instrument, part) in an existing song file
+// Rewrites the # comment metadata lines at the top of the file
+bool UpdateSongMetadata(const std::string& filepath, const std::string& title,
+                        const std::string& author, const std::string& instrument,
+                        const std::string& part);
 
 // Scan music/ directory for .ahk, .txt, and .sng files
 // .ahk files use explicit timing (recommended). .txt/.sng use spacing-based timing.

@@ -12,6 +12,10 @@ namespace Serenade {
 // Info about a song available for download from GitHub
 struct OnlineSong {
     std::string name;         // filename
+    std::string title;        // display title from metadata
+    std::string author;       // song author
+    std::string instrument;   // recommended instrument
+    std::string part;         // part name
     std::string downloadUrl;  // raw download URL
     int size = 0;             // file size in bytes
     bool downloaded = false;  // already exists locally
@@ -66,6 +70,17 @@ private:
     std::string m_OnlineError;
     char m_OnlineFilter[128] = "";
     bool m_ShowOnlinePane = false;
+
+    // Context menu / edit state
+    int m_ContextMenuLibIdx = -1;     // library index for right-click menu
+    int m_ContextMenuPlIdx = -1;      // playlist index for right-click menu
+    bool m_ShowEditPopup = false;
+    bool m_ShowDeleteConfirm = false;
+    int m_EditSongLibIdx = -1;        // library index of song being edited/deleted
+    char m_EditTitle[256] = "";
+    char m_EditAuthor[256] = "";
+    char m_EditInstrument[256] = "";
+    char m_EditPart[256] = "";
 };
 
 } // namespace Serenade

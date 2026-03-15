@@ -476,6 +476,7 @@ Song LoadSongFile(const std::string& filepath) {
         song.title = p.stem().string();
     }
 
+    song.filepath = filepath;
     return song;
 }
 
@@ -540,6 +541,78 @@ bool SaveSongFile(const std::string& filepath, const Song& song) {
     return true;
 }
 
+bool UpdateSongMetadata(const std::string& filepath, const std::string& title,
+                        const std::string& author, const std::string& instrument,
+                        const std::string& part) {
+    // Read the entire file
+    std::ifstream inFile(filepath);
+    if (!inFile.is_open()) return false;
+
+    std::vector<std::string> lines;
+    std::string line;
+    while (std::getline(inFile, line)) {
+        lines.push_back(line);
+    }
+    inFile.close();
+
+    // Determine file type by extension
+    std::filesystem::path p(filepath);
+    std::string ext = p.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    // For .ahk and .txt files: metadata is in # comment lines at top
+    // For .sng files: metadata is in plain header lines before ---
+    bool isAhkOrTxt = (ext == ".ahk" || ext == ".txt");
+
+    // Remove existing metadata lines from top of file
+    std::vector<std::string> bodyLines;
+    bool pastMeta = false;
+    for (const auto& l : lines) {
+        std::string trimmed = Trim(l);
+        if (!pastMeta) {
+            if (isAhkOrTxt) {
+                // Skip # or ; metadata comment lines
+                if (!trimmed.empty() && (trimmed[0] == '#' || trimmed[0] == ';')) {
+                    std::string meta = Trim(trimmed.substr(1));
+                    if (meta.substr(0, 6) == "title:" || meta.substr(0, 7) == "author:" ||
+                        meta.substr(0, 11) == "instrument:" || meta.substr(0, 5) == "part:" ||
+                        meta.substr(0, 4) == "bpm:")
+                        continue; // skip this metadata line
+                }
+            } else {
+                // .sng format: plain header lines
+                if (trimmed.substr(0, 6) == "title:" || trimmed.substr(0, 7) == "author:" ||
+                    trimmed.substr(0, 11) == "instrument:" || trimmed.substr(0, 5) == "part:")
+                    continue;
+            }
+            pastMeta = true;
+        }
+        bodyLines.push_back(l);
+    }
+
+    // Write back: new metadata + remaining body
+    std::ofstream outFile(filepath);
+    if (!outFile.is_open()) return false;
+
+    if (isAhkOrTxt) {
+        if (!title.empty()) outFile << "# title: " << title << "\n";
+        if (!author.empty()) outFile << "# author: " << author << "\n";
+        if (!instrument.empty()) outFile << "# instrument: " << instrument << "\n";
+        if (!part.empty()) outFile << "# part: " << part << "\n";
+    } else {
+        if (!title.empty()) outFile << "title: " << title << "\n";
+        if (!author.empty()) outFile << "author: " << author << "\n";
+        if (!instrument.empty()) outFile << "instrument: " << instrument << "\n";
+        if (!part.empty()) outFile << "part: " << part << "\n";
+    }
+
+    for (const auto& l : bodyLines) {
+        outFile << l << "\n";
+    }
+
+    return outFile.good();
+}
+
 Song LoadNotationFile(const std::string& filepath, int bpm) {
     std::ifstream file(filepath);
     if (!file.is_open()) return Song{};
@@ -579,6 +652,7 @@ Song LoadNotationFile(const std::string& filepath, int bpm) {
     Song song = ParseNotation(notation, title, bpm, inst);
     song.author = author;
     song.part = part;
+    song.filepath = filepath;
     return song;
 }
 
@@ -783,6 +857,7 @@ Song LoadAHKFile(const std::string& filepath) {
     song.author = author;
     song.instrument = inst;
     song.part = part;
+    song.filepath = filepath;
 
     return song;
 }

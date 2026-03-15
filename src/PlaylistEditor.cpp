@@ -191,6 +191,101 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
         ImGui::EndChild();
     }
 
+    // --- Edit Metadata Popup ---
+    if (m_ShowEditPopup) {
+        ImGui::OpenPopup("Edit Song Metadata");
+        m_ShowEditPopup = false;
+    }
+    if (ImGui::BeginPopupModal("Edit Song Metadata", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const auto& library = player.GetSongLibrary();
+        if (m_EditSongLibIdx >= 0 && m_EditSongLibIdx < (int)library.size()) {
+            ImGui::Text("Editing: %s", library[m_EditSongLibIdx].filepath.c_str());
+            ImGui::Separator();
+            ImGui::Dummy(ImVec2(0, 4));
+
+            ImGui::Text("Title");
+            ImGui::SetNextItemWidth(350);
+            ImGui::InputText("##edit_title", m_EditTitle, sizeof(m_EditTitle));
+
+            ImGui::Text("Author");
+            ImGui::SetNextItemWidth(350);
+            ImGui::InputText("##edit_author", m_EditAuthor, sizeof(m_EditAuthor));
+
+            ImGui::Text("Instrument");
+            ImGui::SetNextItemWidth(350);
+            ImGui::InputText("##edit_instrument", m_EditInstrument, sizeof(m_EditInstrument));
+
+            ImGui::Text("Part");
+            ImGui::SetNextItemWidth(350);
+            ImGui::InputText("##edit_part", m_EditPart, sizeof(m_EditPart));
+
+            ImGui::Dummy(ImVec2(0, 4));
+            ImGui::Separator();
+
+            if (ImGui::Button("Save", ImVec2(120, 0))) {
+                const auto& s = library[m_EditSongLibIdx];
+                if (!s.filepath.empty()) {
+                    UpdateSongMetadata(s.filepath, m_EditTitle, m_EditAuthor,
+                                       m_EditInstrument, m_EditPart);
+                    if (m_RefreshCb) m_RefreshCb();
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+        } else {
+            ImGui::Text("Invalid song selection.");
+            if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    // --- Delete Confirmation Popup ---
+    if (m_ShowDeleteConfirm) {
+        ImGui::OpenPopup("Delete Song?");
+        m_ShowDeleteConfirm = false;
+    }
+    if (ImGui::BeginPopupModal("Delete Song?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        const auto& library = player.GetSongLibrary();
+        if (m_EditSongLibIdx >= 0 && m_EditSongLibIdx < (int)library.size()) {
+            const auto& s = library[m_EditSongLibIdx];
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+            ImGui::Text("Are you sure you want to delete this song?");
+            ImGui::PopStyleColor();
+            ImGui::Dummy(ImVec2(0, 2));
+            ImGui::Text("Title: %s", s.title.c_str());
+            ImGui::Text("File: %s", s.filepath.c_str());
+            ImGui::Dummy(ImVec2(0, 4));
+            ImGui::Separator();
+
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.15f, 0.15f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.9f, 0.1f, 0.1f, 1.0f));
+            if (ImGui::Button("Delete", ImVec2(120, 0))) {
+                if (!s.filepath.empty()) {
+                    try {
+                        std::filesystem::remove(s.filepath);
+                    } catch (...) {}
+                    if (m_RefreshCb) m_RefreshCb();
+                    m_SelectedLibraryItem = -1;
+                    m_SelectedPlaylistItem = -1;
+                }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::PopStyleColor(3);
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+        } else {
+            ImGui::Text("Invalid song selection.");
+            if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     ImGui::End();
 
     ImGui::PopStyleColor(17);
@@ -287,6 +382,28 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
             player.AddToPlaylist(i);
         }
 
+        // Right-click context menu
+        if (ImGui::BeginPopupContextItem()) {
+            m_SelectedLibraryItem = i;
+            if (ImGui::MenuItem("Add to Playlist")) {
+                player.AddToPlaylist(i);
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Edit Metadata...")) {
+                m_EditSongLibIdx = i;
+                snprintf(m_EditTitle, sizeof(m_EditTitle), "%s", song.title.c_str());
+                snprintf(m_EditAuthor, sizeof(m_EditAuthor), "%s", song.author.c_str());
+                snprintf(m_EditInstrument, sizeof(m_EditInstrument), "%s", song.instrument.c_str());
+                snprintf(m_EditPart, sizeof(m_EditPart), "%s", song.part.c_str());
+                m_ShowEditPopup = true;
+            }
+            if (ImGui::MenuItem("Delete Song...")) {
+                m_EditSongLibIdx = i;
+                m_ShowDeleteConfirm = true;
+            }
+            ImGui::EndPopup();
+        }
+
         // Tooltip with details
         if (ImGui::IsItemHovered()) {
             ImGui::BeginTooltip();
@@ -294,7 +411,6 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
             if (!song.author.empty()) ImGui::Text("Author: %s", song.author.c_str());
             if (!song.instrument.empty()) ImGui::Text("Instrument: %s", song.instrument.c_str());
             if (!song.part.empty()) ImGui::Text("Part: %s", song.part.c_str());
-            ImGui::Text("Events: %d", (int)song.events.size());
             float dur = song.GetTotalDurationSeconds();
             ImGui::Text("Duration: %d:%02d", (int)(dur / 60), (int)dur % 60);
             ImGui::EndTooltip();
@@ -420,6 +536,36 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
             if (!player.IsPlaying()) player.Play();
         }
 
+        // Right-click context menu
+        if (ImGui::BeginPopupContextItem()) {
+            m_SelectedPlaylistItem = i;
+            if (ImGui::MenuItem("Play")) {
+                player.JumpToTrack(i);
+                if (!player.IsPlaying()) player.Play();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Edit Metadata...")) {
+                m_EditSongLibIdx = libIdx;
+                snprintf(m_EditTitle, sizeof(m_EditTitle), "%s", song.title.c_str());
+                snprintf(m_EditAuthor, sizeof(m_EditAuthor), "%s", song.author.c_str());
+                snprintf(m_EditInstrument, sizeof(m_EditInstrument), "%s", song.instrument.c_str());
+                snprintf(m_EditPart, sizeof(m_EditPart), "%s", song.part.c_str());
+                m_ShowEditPopup = true;
+            }
+            if (ImGui::MenuItem("Remove from Playlist")) {
+                player.RemoveFromPlaylist(i);
+                if (m_SelectedPlaylistItem >= (int)player.GetPlaylistSize()) {
+                    m_SelectedPlaylistItem = (int)player.GetPlaylistSize() - 1;
+                }
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete Song...")) {
+                m_EditSongLibIdx = libIdx;
+                m_ShowDeleteConfirm = true;
+            }
+            ImGui::EndPopup();
+        }
+
         if (pushed) {
             ImGui::PopStyleColor();
         }
@@ -474,12 +620,15 @@ static bool HttpDownloadFile(const std::string& url, const std::string& destPath
     return file.good();
 }
 
+static const char* kGitHubRawBase = "https://raw.githubusercontent.com/PieOrCake/serenade/main/songs/";
+
 void PlaylistEditor::FetchOnlineSongs() {
     m_OnlineFetching = true;
     m_OnlineError.clear();
     m_OnlineSongs.clear();
 
-    std::string json = HttpGet("https://api.github.com/repos/PieOrCake/serenade/contents/songs");
+    std::string indexUrl = std::string(kGitHubRawBase) + "index.json";
+    std::string json = HttpGet(indexUrl);
     m_OnlineFetching = false;
 
     if (json.empty()) {
@@ -490,35 +639,34 @@ void PlaylistEditor::FetchOnlineSongs() {
     try {
         auto parsed = nlohmann::json::parse(json);
 
-        if (parsed.is_object() && parsed.contains("message")) {
-            m_OnlineError = "GitHub API: " + parsed["message"].get<std::string>();
-            return;
-        }
-
         if (!parsed.is_array()) {
-            m_OnlineError = "Unexpected response from GitHub API.";
+            m_OnlineError = "Unexpected index.json format.";
             return;
         }
 
         for (const auto& item : parsed) {
             if (!item.is_object()) continue;
-            std::string name = item.value("name", "");
-            std::string type = item.value("type", "");
-            if (type != "file") continue;
-            // Only show .ahk song files
-            if (name.size() < 4 || name.substr(name.size() - 4) != ".ahk") continue;
-            if (name == ".gitkeep") continue;
+            std::string file = item.value("file", "");
+            if (file.empty()) continue;
 
             OnlineSong song;
-            song.name = name;
-            song.downloadUrl = item.value("download_url", "");
+            song.name = file;
+            song.title = item.value("title", "");
+            song.author = item.value("author", "");
+            song.instrument = item.value("instrument", "");
+            song.part = item.value("part", "");
+            song.downloadUrl = std::string(kGitHubRawBase) + file;
             song.size = item.value("size", 0);
             m_OnlineSongs.push_back(song);
         }
 
-        // Sort by name
+        // Sort by title (fall back to filename)
         std::sort(m_OnlineSongs.begin(), m_OnlineSongs.end(),
-            [](const OnlineSong& a, const OnlineSong& b) { return a.name < b.name; });
+            [](const OnlineSong& a, const OnlineSong& b) {
+                const std::string& ak = a.title.empty() ? a.name : a.title;
+                const std::string& bk = b.title.empty() ? b.name : b.title;
+                return ak < bk;
+            });
 
         UpdateLocalStatus();
         m_OnlineFetched = true;
@@ -616,19 +764,35 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
     for (int i = 0; i < (int)m_OnlineSongs.size(); i++) {
         const auto& song = m_OnlineSongs[i];
 
-        // Apply filter
+        // Apply filter across title, author, instrument, filename
         if (!filterStr.empty()) {
-            std::string nameLower = song.name;
-            std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-            if (nameLower.find(filterStr) == std::string::npos) continue;
+            auto toLower = [](std::string s) {
+                std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+                return s;
+            };
+            bool match = toLower(song.name).find(filterStr) != std::string::npos
+                      || toLower(song.title).find(filterStr) != std::string::npos
+                      || toLower(song.author).find(filterStr) != std::string::npos
+                      || toLower(song.instrument).find(filterStr) != std::string::npos;
+            if (!match) continue;
         }
 
         ImGui::PushID(i);
 
-        // Display name without .ahk extension
-        std::string displayName = song.name;
-        if (displayName.size() > 4 && displayName.substr(displayName.size() - 4) == ".ahk") {
-            displayName = displayName.substr(0, displayName.size() - 4);
+        // Use title from metadata, fall back to filename without extension
+        std::string displayName = song.title;
+        if (displayName.empty()) {
+            displayName = song.name;
+            if (displayName.size() > 4 && displayName.substr(displayName.size() - 4) == ".ahk")
+                displayName = displayName.substr(0, displayName.size() - 4);
+        }
+
+        // Build metadata tag: [instrument - part] or [instrument] or [part]
+        std::string metaTag;
+        if (!song.instrument.empty()) metaTag = song.instrument;
+        if (!song.part.empty()) {
+            if (!metaTag.empty()) metaTag += " - ";
+            metaTag += song.part;
         }
 
         // Size label
@@ -642,30 +806,41 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
                 snprintf(sizeLabel, sizeof(sizeLabel), "%d B", song.size);
         }
 
+        // Status indicator + download button
         if (song.downloaded) {
-            // Already downloaded — show green checkmark
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 1.0f, 0.4f, 1.0f));
             ImGui::Text("[OK]");
             ImGui::PopStyleColor();
             ImGui::SameLine();
-            ImGui::Text("%s", displayName.c_str());
-            ImGui::SameLine();
-            ImGui::TextDisabled("(%s)", sizeLabel);
         } else if (song.downloading) {
             ImGui::TextDisabled("[...]");
             ImGui::SameLine();
-            ImGui::Text("%s", displayName.c_str());
-            ImGui::SameLine();
-            ImGui::TextDisabled("(downloading...)");
         } else {
-            // Download button
             if (ImGui::SmallButton("Download")) {
                 DownloadSong(i);
             }
             ImGui::SameLine();
-            ImGui::Text("%s", displayName.c_str());
+        }
+
+        // Title
+        ImGui::Text("%s", displayName.c_str());
+
+        // Author + metadata on same line, dimmed
+        if (!song.author.empty() || !metaTag.empty() || sizeLabel[0]) {
             ImGui::SameLine();
-            ImGui::TextDisabled("(%s)", sizeLabel);
+            ImGui::TextDisabled(" -");
+            if (!song.author.empty()) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", song.author.c_str());
+            }
+            if (!metaTag.empty()) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("[%s]", metaTag.c_str());
+            }
+            if (sizeLabel[0]) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", sizeLabel);
+            }
         }
 
         ImGui::PopID();
