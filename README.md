@@ -38,11 +38,6 @@ SendInput {Numpad6}
 Sleep, 395
 ...
 ```
-
-### TXT notation format
-
-Serenade also supports gw2opus Powerina notation as `.txt` files. Copy the notation from gw2opus.com, save as `.txt`, and add `#` metadata lines.
-
 ### Directory structure
 
 ```
@@ -71,16 +66,6 @@ make
 ```
 
 Produces `build/Serenade.dll`.
-
-### MIDI Converter (Linux AppImage)
-
-Requires Python 3, PyQt6, and mido:
-
-```bash
-cd tools
-pyinstaller --onefile --name "Serenade MIDI Converter" midi2ahk.py
-# Then package into AppImage using appimagetool
-```
 
 ## Installation
 

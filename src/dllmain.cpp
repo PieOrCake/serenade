@@ -970,8 +970,8 @@ extern "C" __declspec(dllexport) AddonDefinition_t* GetAddonDef() {
     AddonDef.Load = AddonLoad;
     AddonDef.Unload = AddonUnload;
     AddonDef.Flags = AF_None;
-    AddonDef.Provider = UP_None;
-    AddonDef.UpdateLink = nullptr;
+    AddonDef.Provider = UP_Github;
+    AddonDef.UpdateLink = "https://github.com/PieOrCake/serenade";
 
     return &AddonDef;
 }
