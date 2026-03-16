@@ -1,6 +1,6 @@
-; title: Pirates of the Caribbean
-; author:
-; instrument: Piano
+# title: Pirates of the Caribbean
+# author: Klaus Badelt & Hans Zimmer
+# instrument: Piano
 ; Converted by Serenade midi2ahk
 
 SendInput {Numpad0}

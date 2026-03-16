@@ -1,11 +1,18 @@
 [
-  {"file":"Bohemian_Rhapsody-Queen.ahk","title":"Bohemian Rhapsody","author":"Queen","instrument":"Piano","part":"","size":61435},
-  {"file":"Fur_Elise-Beethoven.ahk","title":"Fur Elise","author":"Beethoven","instrument":"Piano","part":"","size":20047},
-  {"file":" Imagine-John_Lennon.ahk","title":"Imagine","author":"John Lennon","instrument":"Piano","part":"","size":23389},
-  {"file":"Moonlight_Sonata-Beethoven.ahk","title":"Moonlight Sonata (1st Movement)","author":"Beethoven","instrument":"Piano","part":"","size":34044},
-  {"file":"Never_Gonna_ Give_ You_ Up-Rick_Astley.ahk","title":"Never Gonna Give You Up","author":"Rick Astley","instrument":"Piano","part":"","size":48737},
-  {"file":"Piano_Man-Billy_Joel.ahk","title":"Piano Man","author":"Billy Joel","instrument":"Piano","part":"","size":51543},
-  {"file":"Pirates_of_the_Caribbean.ahk","title":"Pirates of the Caribbean","author":"","instrument":"Piano","part":"","size":20832},
+  {"file":"Billy Joel - Piano Man.ahk","title":"Piano Man","author":"Billy Joel","instrument":"Piano","part":"","size":53030},
+  {"file":"Bohemian_Rhapsody-Queen.ahk","title":"Bohemian Rhapsody","author":"Queen","instrument":"Piano","part":"","size":57873},
+  {"file":"Candle_in_the_wind-Elton_John.ahk","title":"Candle In The Wind","author":"Elton John","instrument":"Piano","part":"","size":43959},
+  {"file":"Fur_Elise-Beethoven.ahk","title":"Fur Elise","author":"Ludwig van Beethoven","instrument":"Piano","part":"","size":26982},
+  {"file":"Game_of_Thrones.ahk","title":"Game of Thrones","author":"","instrument":"Piano","part":"","size":20584},
+  {"file":"I_Dont_Like_Mondays-Boomtown_Rats.ahk","title":"I Don't Like Mondays","author":"The Boomtown Rats","instrument":"Piano","part":"","size":44393},
+  {"file":"Imagine-John_Lennon.ahk","title":"Imagine","author":"John Lennon","instrument":"Piano","part":"","size":30288},
+  {"file":"Interstellar.ahk","title":"Interstellar","author":"Hans Zimmer","instrument":"Piano","part":"","size":29514},
+  {"file":"Legend_of_Zelda.ahk","title":"The Legend of Zelda","author":"Koji Kondo","instrument":"Piano","part":"","size":14151},
+  {"file":"Moonlight_Sonata-Beethoven.ahk","title":"Moonlight Sonata","author":"Ludwig Van Beethoven","instrument":"Piano","part":"","size":36718},
+  {"file":"Never_Gonna_Give_You_Up-Rick_Astley.ahk","title":"Never Gonna Give You Up","author":"Mike Stock / Matt Aitken / Peter Waterman","instrument":"Piano","part":"","size":35055},
+  {"file":"Pirates_of_the_Caribbean.ahk","title":"Pirates of the Caribbean","author":"Klaus Badelt & Hans Zimmer","instrument":"Piano","part":"","size":20859},
   {"file":"Stairway_to_Heaven-Led_Zeppelin.ahk","title":"Stairway to Heaven","author":"Led Zeppelin","instrument":"Piano","part":"","size":126581},
-  {"file":"Starlight-Muse.ahk","title":"Starlight","author":"Muse","instrument":"Piano","part":"","size":29093}
+  {"file":"Starlight-Muse.ahk","title":"Starlight","author":"Muse","instrument":"Piano","part":"","size":29093},
+  {"file":"Super_Mario_Bros.ahk","title":"Super Mario Bros","author":"Koji Kondo","instrument":"Piano","part":"","size":19421},
+  {"file":"Zombie-The_Cranberries.ahk","title":"Zombie","author":"The Cranberries","instrument":"Piano","part":"","size":43109}
 ]

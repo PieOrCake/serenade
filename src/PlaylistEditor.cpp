@@ -153,7 +153,7 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
     ImGui::SameLine();
     if (ImGui::Button("Download Songs")) {
         m_ShowOnlinePane = true;
-        if (!m_OnlineFetched && !m_OnlineFetching) {
+        if (!m_OnlineFetching) {
             FetchOnlineSongs();
         }
     }
