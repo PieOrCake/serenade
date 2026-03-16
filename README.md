@@ -8,6 +8,11 @@ This addon has been 100% created in [Windsurf](https://windsurf.com/) using Clau
 
 If an LLM creating software upsets you, then perhaps this repo isn't for you. Move on, and enjoy your day.
 
+## Screenshots
+
+![Music Player](images/player.png)
+![Playlist Editor](images/playlist.png)
+
 ## Features
 
 - **Music Player** — play/pause, stop, next/previous, shuffle, repeat (off/all/one)
