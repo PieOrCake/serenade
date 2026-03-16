@@ -1,6 +1,6 @@
 # Serenade
 
-A Guild Wars 2 addon for [Raidcore Nexus](https://raidcore.gg/Nexus) that automates in-game instrument playback.
+A Guild Wars 2 addon for [Raidcore Nexus](https://raidcore.gg/Nexus) that automates in-game instrument playback. Only the Ornate Grand Piano has been tested, but it should work for other instruments if you acquire songs designed for them.
 
 ## AI Notice
 
