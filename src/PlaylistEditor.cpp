@@ -186,17 +186,13 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
         ImGui::EndChild();
     }
 
-    // --- Download Songs Modal ---
+    // --- Download Music Window ---
     if (m_ShowOnlinePane) {
-        ImGui::OpenPopup("Download Songs");
-        m_ShowOnlinePane = false;
-    }
-    ImGui::SetNextWindowSize(ImVec2(550, 400), ImGuiCond_FirstUseEver);
-    bool downloadOpen = true;
-    if (ImGui::BeginPopupModal("Download Songs", &downloadOpen, ImGuiWindowFlags_None)) {
-        RenderOnlinePane(player);
-        if (!downloadOpen) ImGui::CloseCurrentPopup();
-        ImGui::EndPopup();
+        ImGui::SetNextWindowSize(ImVec2(550, 400), ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Download Music", &m_ShowOnlinePane, ImGuiWindowFlags_None)) {
+            RenderOnlinePane(player);
+        }
+        ImGui::End();
     }
 
     // --- Edit Metadata Popup ---
@@ -342,24 +338,22 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
 
     if (ImGui::BeginTable("##LibTable", 4,
             ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
-            ImGuiTableFlags_BordersInnerV)) {
+            ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate)) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Title", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Title", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort);
         ImGui::TableSetupColumn("Artist", ImGuiTableColumnFlags_WidthStretch, 0.6f);
-        ImGui::TableSetupColumn("Instrument", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-        ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+        ImGui::TableSetupColumn("Instrument", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 70.0f);
+        ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableHeadersRow();
 
+        // Build filtered index list
+        std::vector<int> filtered;
         for (int i = 0; i < (int)library.size(); i++) {
             const auto& song = library[i];
-
-            // Filter by instrument tab
             if (!activeInstrument.empty()) {
                 std::string songInst = song.instrument.empty() ? "Unknown" : song.instrument;
                 if (songInst != activeInstrument) continue;
             }
-
-            // Apply text filter
             if (!filterStr.empty()) {
                 std::string titleLower = song.title;
                 std::transform(titleLower.begin(), titleLower.end(), titleLower.begin(), ::tolower);
@@ -370,30 +364,50 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
                     continue;
                 }
             }
+            filtered.push_back(i);
+        }
 
-            bool selected = (m_SelectedLibraryItem == i);
+        // Sort by column header clicks
+        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+            if (specs->SpecsCount > 0) {
+                const auto& spec = specs->Specs[0];
+                int col = spec.ColumnIndex;
+                bool asc = (spec.SortDirection == ImGuiSortDirection_Ascending);
+                std::sort(filtered.begin(), filtered.end(), [&](int a, int b) {
+                    int cmp = 0;
+                    if (col == 0)      cmp = _stricmp(library[a].title.c_str(), library[b].title.c_str());
+                    else if (col == 1) cmp = _stricmp(library[a].author.c_str(), library[b].author.c_str());
+                    else if (col == 3) cmp = (library[a].GetTotalDurationSeconds() < library[b].GetTotalDurationSeconds()) ? -1 : 1;
+                    return asc ? (cmp < 0) : (cmp > 0);
+                });
+            }
+        }
+
+        for (int idx : filtered) {
+            const auto& song = library[idx];
+            bool selected = (m_SelectedLibraryItem == idx);
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
 
             char buf[64];
-            snprintf(buf, sizeof(buf), "##lib_%d", i);
+            snprintf(buf, sizeof(buf), "##lib_%d", idx);
             if (ImGui::Selectable(buf, selected, ImGuiSelectableFlags_SpanAllColumns)) {
-                m_SelectedLibraryItem = i;
+                m_SelectedLibraryItem = idx;
             }
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-                player.AddToPlaylist(i);
+                player.AddToPlaylist(idx);
             }
 
             // Right-click context menu
             if (ImGui::BeginPopupContextItem()) {
-                m_SelectedLibraryItem = i;
+                m_SelectedLibraryItem = idx;
                 if (ImGui::MenuItem("Add to Playlist")) {
-                    player.AddToPlaylist(i);
+                    player.AddToPlaylist(idx);
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Edit Metadata...")) {
-                    m_EditSongLibIdx = i;
+                    m_EditSongLibIdx = idx;
                     snprintf(m_EditTitle, sizeof(m_EditTitle), "%s", song.title.c_str());
                     snprintf(m_EditAuthor, sizeof(m_EditAuthor), "%s", song.author.c_str());
                     snprintf(m_EditInstrument, sizeof(m_EditInstrument), "%s", song.instrument.c_str());
@@ -401,7 +415,7 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
                     m_ShowEditPopup = true;
                 }
                 if (ImGui::MenuItem("Delete Song...")) {
-                    m_EditSongLibIdx = i;
+                    m_EditSongLibIdx = idx;
                     m_ShowDeleteConfirm = true;
                 }
                 ImGui::EndPopup();
@@ -509,7 +523,7 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
         ImGui::TableSetupColumn("Title", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("Artist", ImGuiTableColumnFlags_WidthStretch, 0.6f);
         ImGui::TableSetupColumn("Instrument", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-        ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+        ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableHeadersRow();
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -797,9 +811,7 @@ void PlaylistEditor::UpdateLocalStatus() {
 }
 
 void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
-    ImGui::Text("Download Songs");
-    ImGui::PopStyleColor();
+    ImGui::Checkbox("Show music I already have", &m_ShowDownloaded);
     ImGui::Separator();
 
     // Refresh button
@@ -853,19 +865,20 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
     // Song table
     if (ImGui::BeginTable("##OnlineTable", 5,
             ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
-            ImGuiTableFlags_BordersInnerV)) {
+            ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate)) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed, 60.0f);
-        ImGui::TableSetupColumn("Title", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 60.0f);
+        ImGui::TableSetupColumn("Title", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort);
         ImGui::TableSetupColumn("Artist", ImGuiTableColumnFlags_WidthStretch, 0.6f);
-        ImGui::TableSetupColumn("Instrument", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+        ImGui::TableSetupColumn("Instrument", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 70.0f);
         ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 55.0f);
         ImGui::TableHeadersRow();
 
+        // Build filtered index list
+        std::vector<int> filtered;
         for (int i = 0; i < (int)m_OnlineSongs.size(); i++) {
             const auto& song = m_OnlineSongs[i];
-
-            // Apply filter across title, author, instrument, filename
+            if (!m_ShowDownloaded && song.downloaded) continue;
             if (!filterStr.empty()) {
                 auto toLower = [](std::string s) {
                     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
@@ -877,12 +890,49 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
                           || toLower(song.instrument).find(filterStr) != std::string::npos;
                 if (!match) continue;
             }
+            filtered.push_back(i);
+        }
+
+        // Sort by column header clicks
+        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+            if (specs->SpecsCount > 0) {
+                const auto& spec = specs->Specs[0];
+                int col = spec.ColumnIndex;
+                bool asc = (spec.SortDirection == ImGuiSortDirection_Ascending);
+                std::sort(filtered.begin(), filtered.end(), [&](int a, int b) {
+                    int cmp = 0;
+                    if (col == 1) {
+                        // Sort by display name (title, falling back to filename)
+                        auto dispName = [&](const OnlineSong& s) -> std::string {
+                            if (!s.title.empty()) return s.title;
+                            std::string n = s.name;
+                            if (n.size() > 4 && n.substr(n.size() - 4) == ".ahk")
+                                n = n.substr(0, n.size() - 4);
+                            return n;
+                        };
+                        cmp = _stricmp(dispName(m_OnlineSongs[a]).c_str(), dispName(m_OnlineSongs[b]).c_str());
+                    } else if (col == 2) {
+                        cmp = _stricmp(m_OnlineSongs[a].author.c_str(), m_OnlineSongs[b].author.c_str());
+                    } else if (col == 4) {
+                        cmp = (m_OnlineSongs[a].size < m_OnlineSongs[b].size) ? -1 : (m_OnlineSongs[a].size > m_OnlineSongs[b].size) ? 1 : 0;
+                    }
+                    return asc ? (cmp < 0) : (cmp > 0);
+                });
+            }
+        }
+
+        for (int i : filtered) {
+            const auto& song = m_OnlineSongs[i];
 
             ImGui::PushID(i);
             ImGui::TableNextRow();
 
-            // Status / download column
+            // Row hover highlight (Selectable spanning all columns)
             ImGui::TableSetColumnIndex(0);
+            ImGui::Selectable("##row", false, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowItemOverlap);
+            ImGui::SameLine();
+
+            // Status / download column
             if (song.downloaded) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.4f, 1.0f, 0.4f, 1.0f));
                 ImGui::Text("Downloaded");

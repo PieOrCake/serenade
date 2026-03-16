@@ -22,7 +22,6 @@ If an LLM creating software upsets you, then perhaps this repo isn't for you. Mo
 AutoHotkey scripts with explicit `SendInput` and `Sleep` commands provide the most accurate playback.
 
 You can get AHK scripts from:
-- The included **MIDI Converter** (see above)
 - [gw2opus Tabify](https://tabify.gw2opus.com/)
 - [gw2mb.com](http://gw2mb.com)
 
@@ -72,7 +71,7 @@ Produces `build/Serenade.dll`.
 
 1. Install [Nexus](https://github.com/RaidcoreGG/Nexus/releases)
 2. Copy `Serenade.dll` into `<GW2>/addons/`
-3. Place `.ahk` or `.txt` song files in `<GW2>/addons/Serenade/music/`
+3. Place `.ahk` song files in `<GW2>/addons/Serenade/music/`
 4. Launch GW2 — Serenade appears in the Nexus quick access bar
 
 ## Usage
@@ -80,8 +79,9 @@ Produces `build/Serenade.dll`.
 1. Equip the **Ornate Grand Piano** in-game
 2. Click the music note icon in the Nexus toolbar (or press `Ctrl+Shift+M`)
 3. Open the Playlist Editor to add songs from the library
-4. Press Play — the addon sends keypresses to GW2 to play the notes
-5. If you need to chat, press Enter — playback stops automatically
+4. Use the download button to download songs from this repository's music directory
+5. Press Play — the addon sends keypresses to GW2 to play the notes
+6. If you need to chat, press Enter — playback stops automatically
 
 ## License
 

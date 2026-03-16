@@ -41,6 +41,7 @@ public:
     void Toggle() { m_Visible = !m_Visible; }
     bool IsVisible() const { return m_Visible; }
     bool* GetVisiblePtr() { return &m_Visible; }
+    bool* GetDownloadWindowVisiblePtr() { return &m_ShowOnlinePane; }
 
 private:
     void RenderLibraryPane(MusicPlayer& player);
@@ -70,6 +71,7 @@ private:
     std::string m_OnlineError;
     char m_OnlineFilter[128] = "";
     bool m_ShowOnlinePane = false;
+    bool m_ShowDownloaded = true;     // "show music I already have" checkbox
 
     // Context menu / edit state
     int m_ContextMenuLibIdx = -1;     // library index for right-click menu

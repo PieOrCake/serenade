@@ -206,6 +206,7 @@ void AddonLoad(AddonAPI_t* aApi) {
     // Register escape-to-close for both windows
     APIDefs->GUI_RegisterCloseOnEscape("Serenade", &g_PlayerWindowVisible);
     APIDefs->GUI_RegisterCloseOnEscape("Serenade - Playlist Editor", g_PlaylistEditor.GetVisiblePtr());
+    APIDefs->GUI_RegisterCloseOnEscape("Download Music", g_PlaylistEditor.GetDownloadWindowVisiblePtr());
 
     // Load a crisp title font at 2x default size
     APIDefs->Fonts_AddFromFile("SERENADE_TITLE", ImGui::GetFontSize() * 2.0f,
@@ -226,6 +227,7 @@ void AddonUnload() {
     // Deregister escape-to-close
     APIDefs->GUI_DeregisterCloseOnEscape("Serenade");
     APIDefs->GUI_DeregisterCloseOnEscape("Serenade - Playlist Editor");
+    APIDefs->GUI_DeregisterCloseOnEscape("Download Music");
 
     // Save key config
     if (!g_KeyConfigPath.empty()) g_Player.SaveKeyConfig(g_KeyConfigPath);
@@ -842,9 +844,6 @@ void AddonRender() {
 
 // --- Nexus Options Panel ---
 void AddonOptions() {
-    if (!ImGui::CollapsingHeader("Serenade")) return;
-
-    ImGui::Indent();
 
     // Instrument info
     const auto& inst = g_Player.GetInstrument();
@@ -897,7 +896,7 @@ void AddonOptions() {
             "C  (1)",  "D  (2)",  "E  (3)",  "F  (4)",
             "G  (5)",  "A  (6)",  "B  (7)",  "C' (8)",
             "C# (F1)", "D# (F2)", "F# (F3)", "G# (F4)", "A# (F5)",
-            "Octave Up", "Octave Down"
+            "Octave Up (0)", "Octave Down (9)"
         };
 
         // Natural notes header
@@ -929,6 +928,44 @@ void AddonOptions() {
                 std::string name = Serenade::VKToDisplayName(config.noteKeys[i]);
                 if (ImGui::Button(name.c_str(), ImVec2(120, 0))) {
                     g_RebindingSlot = i;
+                }
+            }
+            ImGui::PopID();
+        }
+
+        // Octave controls (between naturals and sharps)
+        ImGui::Spacing();
+        ImGui::TextDisabled("Octave Controls");
+        // Render Octave Down first, then Octave Up (down on top, up below)
+        for (int i = 1; i >= 0; i--) {
+            int slot = 13 + i;
+            WORD* vkPtr = (i == 0) ? &config.octaveUpKey : &config.octaveDownKey;
+            ImGui::PushID(slot);
+            ImGui::Text("%-14s", labels[slot]);
+            ImGui::SameLine(130);
+
+            if (g_RebindingSlot == slot) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f));
+                ImGui::Button("Press a key...", ImVec2(120, 0));
+                ImGui::PopStyleColor();
+                for (int vk = 0x08; vk <= 0xFE; vk++) {
+                    if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU ||
+                        vk == VK_LSHIFT || vk == VK_RSHIFT ||
+                        vk == VK_LCONTROL || vk == VK_RCONTROL ||
+                        vk == VK_LMENU || vk == VK_RMENU ||
+                        vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON)
+                        continue;
+                    if (GetAsyncKeyState(vk) & 0x8000) {
+                        *vkPtr = (WORD)vk;
+                        g_RebindingSlot = -1;
+                        changed = true;
+                        break;
+                    }
+                }
+            } else {
+                std::string name = Serenade::VKToDisplayName(*vkPtr);
+                if (ImGui::Button(name.c_str(), ImVec2(120, 0))) {
+                    g_RebindingSlot = slot;
                 }
             }
             ImGui::PopID();
@@ -970,43 +1007,6 @@ void AddonOptions() {
             ImGui::PopID();
         }
 
-        // Octave controls header
-        ImGui::Spacing();
-        ImGui::TextDisabled("Octave Controls");
-        for (int i = 0; i < 2; i++) {
-            int slot = 13 + i;
-            WORD* vkPtr = (i == 0) ? &config.octaveUpKey : &config.octaveDownKey;
-            ImGui::PushID(slot);
-            ImGui::Text("%-14s", labels[slot]);
-            ImGui::SameLine(130);
-
-            if (g_RebindingSlot == slot) {
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1.0f));
-                ImGui::Button("Press a key...", ImVec2(120, 0));
-                ImGui::PopStyleColor();
-                for (int vk = 0x08; vk <= 0xFE; vk++) {
-                    if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU ||
-                        vk == VK_LSHIFT || vk == VK_RSHIFT ||
-                        vk == VK_LCONTROL || vk == VK_RCONTROL ||
-                        vk == VK_LMENU || vk == VK_RMENU ||
-                        vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON)
-                        continue;
-                    if (GetAsyncKeyState(vk) & 0x8000) {
-                        *vkPtr = (WORD)vk;
-                        g_RebindingSlot = -1;
-                        changed = true;
-                        break;
-                    }
-                }
-            } else {
-                std::string name = Serenade::VKToDisplayName(*vkPtr);
-                if (ImGui::Button(name.c_str(), ImVec2(120, 0))) {
-                    g_RebindingSlot = slot;
-                }
-            }
-            ImGui::PopID();
-        }
-
         if (changed) {
             g_Player.SetKeyConfig(config);
             if (!g_KeyConfigPath.empty()) g_Player.SaveKeyConfig(g_KeyConfigPath);
@@ -1021,21 +1021,6 @@ void AddonOptions() {
         }
     }
 
-    ImGui::Spacing();
-
-    // Re-detect game window
-    if (ImGui::Button("Re-detect GW2 Window")) {
-        HWND hwnd = FindGW2Window();
-        if (hwnd) {
-            g_Player.SetGameWindow(hwnd);
-            APIDefs->Log(LOGL_INFO, "Serenade", "GW2 window found");
-            APIDefs->GUI_SendAlert("Serenade: GW2 window detected");
-        } else {
-            APIDefs->GUI_SendAlert("Serenade: GW2 window not found");
-        }
-    }
-
-    ImGui::Unindent();
 }
 
 // Export function
