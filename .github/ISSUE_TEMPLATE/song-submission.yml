@@ -1,0 +1,64 @@
+name: Song Submission
+description: Submit a song to be added to the Serenade music library
+title: "[Song] "
+labels: ["song-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for submitting a song! Please fill in the details below and attach your `.ahk` file.
+
+  - type: input
+    id: title
+    attributes:
+      label: Song Title
+      placeholder: e.g. Moonlight Sonata
+    validations:
+      required: true
+
+  - type: input
+    id: author
+    attributes:
+      label: Original Artist / Composer
+      placeholder: e.g. Beethoven
+    validations:
+      required: true
+
+  - type: dropdown
+    id: instrument
+    attributes:
+      label: GW2 Instrument
+      options:
+        - Ornate Grand Piano
+        - Musical Harp
+        - Musical Lute
+        - Musical Minstrel
+        - Marriner's Horn
+        - Choir Bell
+        - Musical Verdarach
+        - Flute
+        - Musical Bass Guitar
+    validations:
+      required: true
+
+  - type: textarea
+    id: file
+    attributes:
+      label: AHK File
+      description: Drag and drop your `.ahk` file here, or paste its contents.
+      placeholder: Attach your .ahk file by dragging it into this box
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Source (optional)
+      description: Where did the AHK come from? (e.g. self-converted, gw2opus, gw2mb)
+      placeholder: e.g. Converted from MIDI using Serenade Music Converter
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional Notes (optional)
+      description: Anything else? e.g. recommended tracks, conversion settings, known issues.
