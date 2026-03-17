@@ -239,6 +239,10 @@ void AddonUnload() {
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->GUI_Deregister(AddonRender);
 
+    // Release font to prevent crash on unload
+    APIDefs->Fonts_Release("SERENADE_TITLE", OnTitleFontReceived);
+    g_TitleFont = nullptr;
+
     APIDefs = nullptr;
 }
 

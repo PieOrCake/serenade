@@ -443,9 +443,8 @@ void MusicPlayer::PlaybackThread() {
                 while (slept < sleepMs && !m_ThreadStop.load() &&
                        m_State.load() == PlaybackState::Playing) {
                     if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
-                        DebugLog("Enter key detected — stopping playback (chat protection)");
-                        m_ThreadStop.store(true);
-                        m_State.store(PlaybackState::Stopped);
+                        DebugLog("Enter key detected — pausing playback (chat protection)");
+                        Pause();
                         return false;
                     }
                     int chunk = std::min(10, sleepMs - slept);
@@ -455,9 +454,8 @@ void MusicPlayer::PlaybackThread() {
             }
             while (!m_ThreadStop.load() && m_State.load() == PlaybackState::Playing) {
                 if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
-                    DebugLog("Enter key detected — stopping playback (chat protection)");
-                    m_ThreadStop.store(true);
-                    m_State.store(PlaybackState::Stopped);
+                    DebugLog("Enter key detected — pausing playback (chat protection)");
+                    Pause();
                     return false;
                 }
                 if (std::chrono::steady_clock::now() >= targetTime) break;
@@ -570,9 +568,8 @@ void MusicPlayer::PlaybackThread() {
             for (int waited = 0; waited < 3000 && !m_ThreadStop.load(); waited += 10) {
                 if (m_State.load() != PlaybackState::Playing) break;
                 if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
-                    DebugLog("Enter key detected — stopping playback (chat protection)");
-                    m_ThreadStop.store(true);
-                    m_State.store(PlaybackState::Stopped);
+                    DebugLog("Enter key detected — pausing playback (chat protection)");
+                    Pause();
                     break;
                 }
                 Sleep(10);
@@ -594,9 +591,8 @@ void MusicPlayer::PlaybackThread() {
                song->events[eventIdx].durationBeats == 0.0f &&
                !m_ThreadStop.load()) {
             if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
-                DebugLog("Enter key detected — stopping playback (chat protection)");
-                m_ThreadStop.store(true);
-                m_State.store(PlaybackState::Stopped);
+                DebugLog("Enter key detected — pausing playback (chat protection)");
+                Pause();
                 break;
             }
             executeEvent(song->events[eventIdx], eventIdx);
