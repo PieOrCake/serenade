@@ -1,0 +1,6 @@
+#!/bin/bash
+SELF=$(readlink -f "$0")
+HERE=${SELF%/*}
+export QT_PLUGIN_PATH="${HERE}/usr/plugins:${QT_PLUGIN_PATH}"
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-xdgdesktopportal}"
+exec "${HERE}/usr/bin/serenade-midi-converter" "$@"

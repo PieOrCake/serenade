@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Serenade Music Converter
+Comment=Convert MIDI files to GW2 AHK scripts
+Exec=serenade-midi-converter
+Icon=serenade-midi-converter
+Categories=AudioVideo;Audio;Music;
+Terminal=false

@@ -88,6 +88,26 @@ Produces `build/Serenade.dll`.
 5. Press Play — the addon sends keypresses to GW2 to play the notes
 6. If you need to chat, press Enter — playback stops automatically
 
-## License
+## Serenade Addon License
 
 This software is provided as-is, with absolutely no warranty of any kind. Use at your own risk. It might delete your files, melt your PC, burn your house down, or cause world peace. Probably not that last one, but we can hope.
+
+
+## Serenade Music Converter
+
+The `tools/` directory contains **Serenade Music Converter**, a standalone Python/PyQt6 application for converting MIDI and MusicXML files into GW2-compatible AHK scripts. It features a piano roll editor, playback preview, GW2 instrument range clamping, and multi-track support.
+
+Pre-built binaries for Linux (AppImage) and Windows (.exe) are available from the [GitHub Actions](../../actions) build artifacts.
+
+The Serenade Music Converter is licensed under the [GNU General Public License v3.0](LICENSE).
+
+### Third-Party Dependencies
+
+- **[PyQt6](https://www.riverbankcomputing.com/software/pyqt/)** — GUI framework (GPL v3)
+- **[mido](https://github.com/mido/mido)** — MIDI file parsing (MIT)
+- **[pygame](https://www.pygame.org/)** — Audio playback (LGPL v2.1)
+- **[PyInstaller](https://pyinstaller.org/)** — Binary packaging (GPL v2+ with special exception)
+
+## Contributing Songs
+
+Have a song you'd like to share with the Serenade community? [Submit it here](../../issues/new?template=song-submission.yml) — just fill in the details and attach your `.ahk` file. Accepted songs will be added to the `music/` directory and become available for in-game download.

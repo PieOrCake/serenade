@@ -13,8 +13,17 @@ Makefile
 .vscode/
 .idea/
 
-# Converter / tools (excluded from repo)
-tools/
+# Converter / tools build artifacts (excluded from repo)
+tools/.venv/
+tools/build/
+tools/dist/
+tools/__pycache__/
+tools/*.spec
+tools/AppDir/usr/bin/
+tools/*.AppImage
+tools/*.ahk
+tools/Serenade MIDI Converter
+tools/Serenade Music Converter
 
 # Sample / test music files in root (music/ dir is tracked)
 /*.ahk
