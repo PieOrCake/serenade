@@ -13,7 +13,7 @@
 // Version constants
 #define V_MAJOR 0
 #define V_MINOR 9
-#define V_BUILD 0
+#define V_BUILD 1
 #define V_REVISION 0
 
 // Quick Access icon identifiers
