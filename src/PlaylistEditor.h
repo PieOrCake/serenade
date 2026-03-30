@@ -84,6 +84,9 @@ private:
     char m_EditInstrument[256] = "";
     char m_EditPart[256] = "";
 
+    // Filtered library indices (built by RenderLibraryPane, used by RenderActionButtons)
+    std::vector<int> m_FilteredLibrary;
+
     // Drag-and-drop reorder state
     int m_DragSourceIdx = -1;         // playlist index being dragged
     int m_DragTargetIdx = -1;         // current drop target index

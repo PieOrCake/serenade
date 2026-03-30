@@ -9,12 +9,13 @@
 #include "MusicPlayer.h"
 #include "SongParser.h"
 #include "PlaylistEditor.h"
+#include <shellapi.h>
 
 // Version constants
 #define V_MAJOR 0
 #define V_MINOR 9
 #define V_BUILD 1
-#define V_REVISION 0
+#define V_REVISION 1
 
 // Quick Access icon identifiers
 #define QA_ID "QA_SERENADE"
@@ -91,6 +92,11 @@ static int g_SelectedInstrument = 0;
 
 // Keybind rebind state: -1 = not rebinding, 0-7 = note key, 8 = octave up, 9 = octave down
 static int g_RebindingSlot = -1;
+
+// Saved window visibility for QA toggle restore
+static bool g_SavedPlayerVisible = true;
+static bool g_SavedPlaylistVisible = false;
+static bool g_SavedDownloadVisible = false;
 
 // Forward declarations
 void AddonLoad(AddonAPI_t* aApi);
@@ -250,7 +256,23 @@ void ProcessKeybind(const char* aIdentifier, bool aIsRelease) {
     if (aIsRelease) return;
 
     if (strcmp(aIdentifier, "KB_SERENADE_TOGGLE") == 0) {
-        g_PlayerWindowVisible = !g_PlayerWindowVisible;
+        bool anyVisible = g_PlayerWindowVisible ||
+                          g_PlaylistEditor.IsVisible() ||
+                          *g_PlaylistEditor.GetDownloadWindowVisiblePtr();
+        if (anyVisible) {
+            // Save which windows are open, then close all
+            g_SavedPlayerVisible = g_PlayerWindowVisible;
+            g_SavedPlaylistVisible = g_PlaylistEditor.IsVisible();
+            g_SavedDownloadVisible = *g_PlaylistEditor.GetDownloadWindowVisiblePtr();
+            g_PlayerWindowVisible = false;
+            g_PlaylistEditor.Hide();
+            *g_PlaylistEditor.GetDownloadWindowVisiblePtr() = false;
+        } else {
+            // Always show player, restore playlist/download state
+            g_PlayerWindowVisible = true;
+            if (g_SavedPlaylistVisible) g_PlaylistEditor.Show();
+            *g_PlaylistEditor.GetDownloadWindowVisiblePtr() = g_SavedDownloadVisible;
+        }
     }
 }
 
@@ -848,6 +870,16 @@ void AddonRender() {
 
 // --- Nexus Options Panel ---
 void AddonOptions() {
+
+    ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.3f, 1.0f), "Serenade");
+    if (ImGui::SmallButton("Homepage")) {
+        ShellExecuteA(NULL, "open", "https://pie.rocks.cc/", NULL, NULL, SW_SHOWNORMAL);
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Buy me a coffee!")) {
+        ShellExecuteA(NULL, "open", "https://ko-fi.com/pieorcake", NULL, NULL, SW_SHOWNORMAL);
+    }
+    ImGui::Separator();
 
     // Instrument info
     const auto& inst = g_Player.GetInstrument();
