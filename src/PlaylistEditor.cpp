@@ -217,7 +217,23 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
 
             ImGui::Text("Instrument");
             ImGui::SetNextItemWidth(350);
-            ImGui::InputText("##edit_instrument", m_EditInstrument, sizeof(m_EditInstrument));
+            {
+                static const char* kInstruments[] = {
+                    "Piano", "Harp", "Lute", "Minstrel", "Horn",
+                    "Bell", "Verdarach", "Flute", "Bass"
+                };
+                static const int kInstrumentCount = sizeof(kInstruments) / sizeof(kInstruments[0]);
+                if (ImGui::BeginCombo("##edit_instrument", m_EditInstrument)) {
+                    for (int n = 0; n < kInstrumentCount; n++) {
+                        bool isSelected = (strcmp(m_EditInstrument, kInstruments[n]) == 0);
+                        if (ImGui::Selectable(kInstruments[n], isSelected)) {
+                            snprintf(m_EditInstrument, sizeof(m_EditInstrument), "%s", kInstruments[n]);
+                        }
+                        if (isSelected) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+            }
 
             ImGui::Dummy(ImVec2(0, 4));
             ImGui::Separator();
@@ -346,8 +362,9 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
         ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableHeadersRow();
 
-        // Build filtered index list
-        std::vector<int> filtered;
+        // Build filtered index list (stored for Add All button)
+        m_FilteredLibrary.clear();
+        std::vector<int>& filtered = m_FilteredLibrary;
         for (int i = 0; i < (int)library.size(); i++) {
             const auto& song = library[i];
             if (!activeInstrument.empty()) {
@@ -402,6 +419,9 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
             // Right-click context menu
             if (ImGui::BeginPopupContextItem()) {
                 m_SelectedLibraryItem = idx;
+                if (ImGui::MenuItem("Play")) {
+                    player.PlayDirectFromLibrary(idx);
+                }
                 if (ImGui::MenuItem("Add to Playlist")) {
                     player.AddToPlaylist(idx);
                 }
@@ -456,13 +476,13 @@ void PlaylistEditor::RenderActionButtons(MusicPlayer& player) {
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Add to playlist");
 
-    // Add all
+    // Add all (from current tab/filter)
     if (PlIconButton("##pl_addall", btnW, btnH, DrawIconChevronRightDouble)) {
-        for (int i = 0; i < (int)player.GetLibrarySize(); i++) {
-            player.AddToPlaylist(i);
+        for (int idx : m_FilteredLibrary) {
+            player.AddToPlaylist(idx);
         }
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Add all");
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Add all visible");
 
     // Remove selected from playlist
     if (PlIconButton("##pl_rem", btnW, btnH, DrawIconChevronLeft)) {

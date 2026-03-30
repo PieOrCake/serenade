@@ -105,6 +105,10 @@ public:
     // Jump to a specific track in the playlist
     void JumpToTrack(int playlistIndex);
 
+    // Play a song directly from the library without modifying the playlist
+    void PlayDirectFromLibrary(int libraryIndex);
+    bool IsDirectPlay() const { return m_DirectPlayLibIdx >= 0; }
+
     // Instrument selection
     void SetInstrument(const std::string& name);
     const InstrumentProfile& GetInstrument() const { return m_Instrument; }
@@ -147,6 +151,7 @@ private:
 
     // Track position
     int m_CurrentTrack = -1;            // Index into m_Playlist
+    int m_DirectPlayLibIdx = -1;         // Direct play from library (-1 = off)
     std::atomic<int> m_CurrentEvent{0}; // Index into current song's events
     Octave m_CurrentOctave = Octave::Mid;
 

@@ -43,6 +43,10 @@ int MusicPlayer::GetEffectiveBPM() const {
 }
 
 const Song* MusicPlayer::GetCurrentSong() const {
+    // Direct play mode: use library index directly
+    if (m_DirectPlayLibIdx >= 0 && m_DirectPlayLibIdx < (int)m_Library.size()) {
+        return &m_Library[m_DirectPlayLibIdx];
+    }
     if (m_CurrentTrack < 0 || m_CurrentTrack >= (int)m_Playlist.size()) return nullptr;
     int libIdx = m_Playlist[m_CurrentTrack];
     if (libIdx < 0 || libIdx >= (int)m_Library.size()) return nullptr;
@@ -137,6 +141,7 @@ void MusicPlayer::Stop() {
 void MusicPlayer::Next() {
     bool wasPlaying = IsPlaying();
     Stop();
+    m_DirectPlayLibIdx = -1;
     m_CurrentTrack = ResolveNextTrack();
     if (wasPlaying && m_CurrentTrack >= 0) {
         Play();
@@ -149,6 +154,7 @@ void MusicPlayer::Previous() {
     m_LastPrevPressTime = now;
 
     bool wasPlaying = IsPlaying();
+    m_DirectPlayLibIdx = -1;
 
     if (elapsed < 1.5) {
         // Second press within 1.5s — go to previous track
@@ -169,10 +175,28 @@ void MusicPlayer::JumpToTrack(int playlistIndex) {
     if (playlistIndex < 0 || playlistIndex >= (int)m_Playlist.size()) return;
     bool wasPlaying = IsPlaying();
     Stop();
+    m_DirectPlayLibIdx = -1;  // Exit direct play mode
     m_CurrentTrack = playlistIndex;
     if (wasPlaying) {
         Play();
     }
+}
+
+void MusicPlayer::PlayDirectFromLibrary(int libraryIndex) {
+    if (libraryIndex < 0 || libraryIndex >= (int)m_Library.size()) return;
+    Stop();
+    m_DirectPlayLibIdx = libraryIndex;
+    m_State.store(PlaybackState::Stopped);  // Ensure clean state
+    // Start playback
+    if (m_Thread.joinable()) m_Thread.join();
+    m_CurrentEvent.store(0);
+    m_CurrentOctave = Octave::Mid;
+    m_ElapsedBeforeLastPause = 0.0f;
+    m_PlaybackStart = std::chrono::steady_clock::now();
+    m_ThreadStop.store(false);
+    m_ThreadRunning.store(true);
+    m_State.store(PlaybackState::Playing);
+    m_Thread = std::thread(&MusicPlayer::PlaybackThread, this);
 }
 
 void MusicPlayer::CycleRepeatMode() {
@@ -225,6 +249,7 @@ int MusicPlayer::ResolvePrevTrack() const {
 }
 
 void MusicPlayer::AdvanceTrack() {
+    m_DirectPlayLibIdx = -1;  // Exit direct play on track advance
     int next = ResolveNextTrack();
     if (next < 0) {
         m_State.store(PlaybackState::Stopped);

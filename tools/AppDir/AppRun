@@ -3,4 +3,15 @@ SELF=$(readlink -f "$0")
 HERE=${SELF%/*}
 export QT_PLUGIN_PATH="${HERE}/usr/plugins:${QT_PLUGIN_PATH}"
 export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-xdgdesktopportal}"
+# Ensure SSL certificates are found (bundled Python may not locate host certs)
+if [ -z "$SSL_CERT_FILE" ]; then
+    for _cert in /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt \
+                 /etc/ssl/ca-bundle.pem /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem \
+                 /etc/ssl/cert.pem; do
+        if [ -f "$_cert" ]; then
+            export SSL_CERT_FILE="$_cert"
+            break
+        fi
+    done
+fi
 exec "${HERE}/usr/bin/serenade-midi-converter" "$@"

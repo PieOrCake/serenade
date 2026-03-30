@@ -584,7 +584,7 @@ def extract_musicxml_metadata(root):
     return meta
 
 
-def convert(midi_file, output_file, track_indices=None, title=None, author=None, transpose=None, base_octave=None, chord_window_ms=5, notes_override=None, use_chords=False):
+def convert(midi_file, output_file, track_indices=None, title=None, author=None, transpose=None, base_octave=None, chord_window_ms=5, notes_override=None, use_chords=False, instrument=None):
     """Convert a MIDI file to a GW2 AHK script. Returns (success, log_lines).
 
     track_indices: list of track indices, or None for all tracks merged.
@@ -656,7 +656,7 @@ def convert(midi_file, output_file, track_indices=None, title=None, author=None,
     lines.append(f'; title: {title}')
     if author:
         lines.append(f'; author: {author}')
-    lines.append('; instrument: Piano')
+    lines.append(f'; instrument: {instrument or "Piano"}')
     lines.append('; Converted by Serenade Music Converter')
     lines.append('')
 
@@ -1212,15 +1212,15 @@ def play_preview_note(pitch, velocity=100, duration_s=0.4):
 # GW2 instrument definitions: (name, key, midi_low, midi_high)
 # midi_low/high = the full playable range including the octave-repeat top note
 GW2_INSTRUMENTS = [
-    ("Ornate Grand Piano",  "C Major", 48, 84),   # C3-C6, 3 octaves
-    ("Musical Harp",        "C Major", 48, 84),   # C3-C6, 3 octaves
-    ("Musical Lute",        "C Major", 48, 84),   # C3-C6, 3 octaves
-    ("Musical Minstrel",    "C Major", 48, 84),   # C3-C6, 3 octaves
-    ("Marriner's Horn",     "C Major", 48, 84),   # C3-C6, 3 octaves
-    ("Choir Bell",          "D Major", 50, 86),   # D3-D6, 3 octaves
-    ("Musical Verdarach",   "D Major", 50, 86),   # D3-D6, 3 octaves
-    ("Flute",               "E Major", 64, 88),   # E4-E6, 2 octaves
-    ("Musical Bass Guitar", "C Major", 36, 60),   # C2-C4, 2 octaves
+    ("Piano",     "C Major", 48, 84),   # C3-C6, 3 octaves
+    ("Harp",      "C Major", 48, 84),   # C3-C6, 3 octaves
+    ("Lute",      "C Major", 48, 84),   # C3-C6, 3 octaves
+    ("Minstrel",  "C Major", 48, 84),   # C3-C6, 3 octaves
+    ("Horn",      "C Major", 48, 84),   # C3-C6, 3 octaves
+    ("Bell",      "D Major", 50, 86),   # D3-D6, 3 octaves
+    ("Verdarach", "D Major", 50, 86),   # D3-D6, 3 octaves
+    ("Flute",     "E Major", 64, 88),   # E4-E6, 2 octaves
+    ("Bass",      "C Major", 36, 60),   # C2-C4, 2 octaves
 ]
 
 
@@ -1298,16 +1298,68 @@ def analyze_gw2_issues(notes):
 
 def fix_gw2_issues(notes):
     """Auto-fix GW2 playback issues. Returns number of fixes applied.
-    - Removes duplicate simultaneous notes (keeps highest velocity)
-    - Trims overlapping note durations
-    - Inserts minimum gaps between consecutive notes
+    - Trims note durations to ensure minimum gaps between sequential notes
     - Adds extra gap padding for octave changes
+    - Does NOT touch simultaneous notes (chords) — converter handles those natively
     """
     active = [n for n in notes if not n.deleted]
     if len(active) < 2:
         return 0
 
+    # Sort by start time, then pitch
+    sorted_notes = sorted(active, key=lambda n: (n.start_ms, n.pitch))
+
+    # Group simultaneous notes (within 1ms = same chord)
+    groups = []
+    i = 0
+    while i < len(sorted_notes):
+        group = [sorted_notes[i]]
+        j = i + 1
+        while j < len(sorted_notes) and abs(sorted_notes[j].start_ms - sorted_notes[i].start_ms) < 1:
+            group.append(sorted_notes[j])
+            j += 1
+        groups.append(group)
+        i = j
+
     fixes = 0
+
+    for gi in range(len(groups) - 1):
+        cur_group = groups[gi]
+        nxt_group = groups[gi + 1]
+
+        nxt_start = nxt_group[0].start_ms
+
+        # Determine if octave change is needed between groups
+        cur_pitches = [n.pitch for n in cur_group]
+        nxt_pitches = [n.pitch for n in nxt_group]
+        cur_octs = set(_note_octave(p) for p in cur_pitches)
+        nxt_octs = set(_note_octave(p) for p in nxt_pitches)
+        needs_octave_change = cur_octs != nxt_octs
+
+        min_gap = GW2_MIN_NOTE_DELAY_MS
+        if needs_octave_change:
+            min_gap = GW2_MIN_NOTE_DELAY_MS + GW2_OCTAVE_SWAP_DELAY_MS
+
+        # Trim each note in current group so it ends min_gap ms before next group
+        for note in cur_group:
+            note_end = note.start_ms + note.duration_ms
+            gap = nxt_start - note_end
+            if gap < min_gap:
+                new_dur = nxt_start - note.start_ms - min_gap
+                if new_dur < 10:
+                    new_dur = 10  # floor: don't shrink below 10ms
+                if new_dur != note.duration_ms:
+                    note.duration_ms = new_dur
+                    fixes += 1
+
+        # If trimming to floor still leaves insufficient gap, shift next group forward
+        latest_end = max(n.start_ms + n.duration_ms for n in cur_group)
+        actual_gap = nxt_start - latest_end
+        if actual_gap < min_gap:
+            shift = min_gap - actual_gap
+            for note in nxt_group:
+                note.start_ms += shift
+            fixes += 1
 
     return fixes
 
@@ -2590,7 +2642,8 @@ class MainWindow(QMainWindow):
         tracks_layout.addLayout(track_btn_row)
 
         self.track_list = QListWidget()
-        self.track_list.setMinimumHeight(140)
+        self.track_list.setMinimumHeight(80)
+        self.track_list.setMaximumHeight(160)
         tracks_layout.addWidget(self.track_list)
 
         oct_btn_row = QHBoxLayout()
@@ -2801,6 +2854,15 @@ class MainWindow(QMainWindow):
             )
 
         # ── Log ───────────────────────────────────────────────────────
+        log_header = QHBoxLayout()
+        log_header.addWidget(QLabel("Log"))
+        log_header.addStretch()
+        copy_log_btn = QPushButton("Copy")
+        copy_log_btn.setFixedWidth(50)
+        copy_log_btn.clicked.connect(lambda: QApplication.clipboard().setText(self.log_text.toPlainText()))
+        log_header.addWidget(copy_log_btn)
+        main_layout.addLayout(log_header)
+
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("monospace", 9))
@@ -2981,14 +3043,14 @@ class MainWindow(QMainWindow):
             self.log("No notes to analyze.")
             return
         overlaps, too_close, octave_tight = analyze_gw2_issues(self._pr_notes)
-        total = overlaps + too_close + octave_tight
+        fixable = too_close + octave_tight
         self.piano_roll.update()
-        if total == 0:
+        if overlaps:
+            self.log(f"ℹ {overlaps} chord notes (blue) — these are fine, sent as rapid keypresses")
+        if fixable == 0:
             self.log("✓ No GW2 timing issues found!")
         else:
-            self.log(f"⚠ Found {total} potential GW2 issues:")
-            if overlaps:
-                self.log(f"  • {overlaps} chord notes (blue) — sent as rapid keypresses")
+            self.log(f"⚠ Found {fixable} timing issues:")
             if too_close:
                 self.log(f"  • {too_close} notes too close together (yellow) — need ≥{GW2_MIN_NOTE_DELAY_MS}ms gap")
             if octave_tight:
@@ -3017,10 +3079,13 @@ class MainWindow(QMainWindow):
         self.piano_roll.update()
         self._on_notes_changed()
         self.log(f"🔧 Applied {fixes} fixes.")
-        if remaining:
-            self.log(f"  ⚠ {remaining} issues remain — run Fix again or adjust manually.")
+        fixable_remaining = too_close + octave_tight
+        if fixable_remaining:
+            self.log(f"  ⚠ {fixable_remaining} timing issues remain — run Fix again or adjust manually.")
         else:
             self.log("  ✓ All GW2 timing issues resolved!")
+        if overlaps:
+            self.log(f"  ℹ {overlaps} chord notes remain — these are fine.")
 
     def _on_instrument_changed(self, index):
         """Update GW2 range boundaries when instrument changes."""
@@ -3125,7 +3190,12 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to read MIDI: {e}")
                 return
-            self._populate_piano_roll()
+            try:
+                self._populate_piano_roll()
+            except Exception as e:
+                self.log(f"ERROR loading MIDI: {e}")
+                import traceback; traceback.print_exc()
+                return
 
         # Auto-fill metadata
         basename = os.path.splitext(os.path.basename(path))[0]
@@ -3303,12 +3373,15 @@ class MainWindow(QMainWindow):
         if not self.midi_path and not self._pr_notes:
             return
 
-        # Suggest a filename based on title or source file
+        # Suggest a filename: Title - Author.ahk (spaces → underscores)
         title_text = self.title_edit.text().strip()
-        if title_text:
+        author_text = self.author_edit.text().strip()
+        if title_text and author_text:
+            suggested = f"{title_text.replace(' ', '_')}-{author_text.replace(' ', '_')}.ahk"
+        elif title_text:
             suggested = title_text.replace(' ', '_') + '.ahk'
         elif self.midi_path:
-            suggested = os.path.splitext(os.path.basename(self.midi_path))[0] + '.ahk'
+            suggested = os.path.splitext(os.path.basename(self.midi_path))[0].replace(' ', '_') + '.ahk'
         else:
             suggested = 'composition.ahk'
 
@@ -3342,20 +3415,29 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Warning", "No visible notes to convert. Check track visibility.")
                 return
             self.log(f"Notes from piano roll: {len(active_notes)} (after edits)")
+            inst_data = self.instrument_combo.currentData()
+            inst_name = inst_data[0] if inst_data else None
             success, log_lines = convert(self.midi_path or "composition", output, None, title, author,
                                          transpose_data, chord_window_ms=chord_window,
                                          notes_override=active_notes,
-                                         use_chords=self.use_chords_cb.isChecked())
+                                         use_chords=self.use_chords_cb.isChecked(),
+                                         instrument=inst_name)
         elif self.file_type == "musicxml" and self.xml_root is not None:
             xml_notes = extract_notes_musicxml(self.xml_root, None)
+            inst_data = self.instrument_combo.currentData()
+            inst_name = inst_data[0] if inst_data else None
             success, log_lines = convert(self.midi_path, output, None, title, author,
                                          transpose_data, chord_window_ms=chord_window,
                                          notes_override=xml_notes,
-                                         use_chords=self.use_chords_cb.isChecked())
+                                         use_chords=self.use_chords_cb.isChecked(),
+                                         instrument=inst_name)
         else:
+            inst_data = self.instrument_combo.currentData()
+            inst_name = inst_data[0] if inst_data else None
             success, log_lines = convert(self.midi_path, output, None, title, author,
                                          transpose_data, chord_window_ms=chord_window,
-                                         use_chords=self.use_chords_cb.isChecked())
+                                         use_chords=self.use_chords_cb.isChecked(),
+                                         instrument=inst_name)
 
         for line in log_lines:
             self.log(line)
@@ -3593,7 +3675,13 @@ class MainWindow(QMainWindow):
             self.log(f"ERROR: Failed to parse downloaded MIDI: {e}")
             return
 
-        self._populate_piano_roll()
+        try:
+            self._populate_piano_roll()
+        except Exception as e:
+            self.search_status.setText(f"Failed to load MIDI: {e}")
+            self.log(f"ERROR loading MIDI: {e}")
+            import traceback; traceback.print_exc()
+            return
 
         # Pre-fill metadata
         composer = score_info.get('composer', '')
@@ -3602,11 +3690,10 @@ class MainWindow(QMainWindow):
         self.title_edit.setText(score_info.get('title', ''))
         self.author_edit.setText(composer)
 
-        # Set output path
+        # Store suggested output filename for use at save time
         safe_title = re.sub(r'[\u2010-\u2015\u2212]', '-', score_info.get('title', 'untitled'))
         safe_title = re.sub(r'[<>:"/\\|?*]', '', safe_title)
-        last_output_dir = self.settings.value('last_output_dir', os.path.expanduser('~'))
-        self.output_path.setText(os.path.join(last_output_dir, safe_title + '.ahk'))
+        self._suggested_filename = safe_title + '.ahk'
 
         self.convert_btn.setEnabled(True)
         self.export_xml_btn.setEnabled(True)
