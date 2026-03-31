@@ -1,4 +1,5 @@
 # title: Game of Thrones
+# author: Ramin Djawadi
 # instrument: Piano
 ; Converted by Serenade Desktop
 

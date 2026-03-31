@@ -1,6 +1,6 @@
-; title: Never Gonna Give You Up
-; author: Mike Stock / Matt Aitken / Peter Waterman
-; instrument: Piano
+# title: Never Gonna Give You Up
+# author: Rick Astley
+# instrument: Piano
 ; Converted by Serenade midi2ahk from musescore_liygjuxq.mid
 
 SendInput {Numpad4}
