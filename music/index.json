@@ -7,7 +7,6 @@
   {"file":"Don't_Stop_Believin-Journey.ahk","title":"Don't Stop Believin'","author":"Journey","instrument":"Piano","part":"","size":30567},
   {"file":"Fur_Elise-Beethoven.ahk","title":"Fur Elise","author":"Ludwig van Beethoven","instrument":"Piano","part":"","size":26982},
   {"file":"Game_of_Thrones.ahk","title":"Game of Thrones","author":"Ramin Djawadi","instrument":"Piano","part":"","size":20609},
-  {"file":"Game_of_Thrones-Ramin_Djawadi2.ahk","title":"Game of Thrones","author":"Ramin Djawadi","instrument":"Harp","part":"","size":24390},
   {"file":"Gangster's_Paradise-Coolio.ahk","title":"Gangster's Paradise","author":"Coolio","instrument":"Piano","part":"","size":49403},
   {"file":"I_Dont_Like_Mondays-Boomtown_Rats.ahk","title":"I Don't Like Mondays","author":"The Boomtown Rats","instrument":"Piano","part":"","size":44393},
   {"file":"Imagine-John_Lennon.ahk","title":"Imagine","author":"John Lennon","instrument":"Piano","part":"","size":30288},
@@ -15,10 +14,8 @@
   {"file":"Legend_of_Zelda.ahk","title":"The Legend of Zelda","author":"Koji Kondo","instrument":"Piano","part":"","size":14151},
   {"file":"Moonlight_Sonata-Beethoven.ahk","title":"Moonlight Sonata","author":"Ludwig Van Beethoven","instrument":"Piano","part":"","size":36718},
   {"file":"Never_Gonna_Give_You_Up-Rick_Astley.ahk","title":"Never Gonna Give You Up","author":"Rick Astley","instrument":"Piano","part":"","size":35025},
-  {"file":"Numb-Linkin_Park.ahk","title":"Numb","author":"Linkin Park","instrument":"Harp","part":"","size":17883},
   {"file":"Piano_Man-Billy_Joel.ahk","title":"Piano Man","author":"Billy Joel","instrument":"Piano","part":"","size":55364},
   {"file":"Pirates_of_the_Caribbean.ahk","title":"Pirates of the Caribbean","author":"Klaus Badelt & Hans Zimmer","instrument":"Piano","part":"","size":20859},
-  {"file":"Skyrim_Theme-Bethesda.ahk","title":"Skyrim Theme","author":"Bethesda","instrument":"Harp","part":"","size":29333},
   {"file":"Stairway_to_Heaven-Led_Zeppelin.ahk","title":"Stairway to Heaven","author":"Led Zeppelin","instrument":"Piano","part":"","size":126581},
   {"file":"Starlight-Muse.ahk","title":"Starlight","author":"Muse","instrument":"Piano","part":"","size":29093},
   {"file":"Suicide_Is_Painless-Johnny_Mandel_and_Mike_Altman.ahk","title":"Suicide Is Painless","author":"Johnny Mandel and Mike Altman","instrument":"Piano","part":"","size":12844},
@@ -27,7 +24,6 @@
   {"file":"The_Sound_of_Silence-Disturbed.ahk","title":"The Sound of Silence","author":"Disturbed","instrument":"Piano","part":"","size":31839},
   {"file":"Thriller-Michael_Jackson.ahk","title":"Thriller","author":"Michael Jackson","instrument":"Piano","part":"","size":47159},
   {"file":"With_A_Little_Help_From_My_Friends-The_Beatles.ahk","title":"With A Little Help From My Friends","author":"The Beatles","instrument":"Piano","part":"","size":21415},
-  {"file":"Wonderwall-Oasis.ahk","title":"Wonderwall","author":"Oasis","instrument":"Harp","part":"","size":36804},
   {"file":"X-Files_Theme-Mark_Snow.ahk","title":"X-Files Theme","author":"Mark Snow","instrument":"Piano","part":"","size":26708},
   {"file":"Zombie-The_Cranberries.ahk","title":"Zombie","author":"The Cranberries","instrument":"Piano","part":"","size":43109}
 ]
