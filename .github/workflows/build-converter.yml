@@ -2,10 +2,8 @@ name: Build Music Converter
 
 on:
   push:
-    paths:
-      - 'tools/midi2ahk.py'
-      - 'tools/requirements.txt'
-      - '.github/workflows/build-converter.yml'
+    tags:
+      - 'converter-v*'
   workflow_dispatch:
 
 jobs:
@@ -26,10 +24,17 @@ jobs:
 
       - name: Build Windows exe
         run: |
-          pyinstaller --onefile --noconsole --name "Serenade Music Converter" --hidden-import numpy --hidden-import pygame --hidden-import mido --collect-submodules PyQt6 tools/midi2ahk.py
+          pyinstaller --onefile --noconsole --name "Serenade Music Converter" --add-data "tools/serenade-icon.png;." --hidden-import numpy --hidden-import pygame --hidden-import mido --collect-submodules PyQt6 tools/midi2ahk.py
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: Serenade-Music-Converter-Windows
           path: dist/Serenade Music Converter.exe
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/converter-v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} "dist/Serenade Music Converter.exe" --repo ${{ github.repository }} --clobber
