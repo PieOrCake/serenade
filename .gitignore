@@ -25,6 +25,11 @@ tools/*.ahk
 tools/Serenade MIDI Converter
 tools/Serenade Music Converter
 
+# Local-only patches and scripts (never commit)
+tools/.musescore.patch
+tools/patch-apply.sh
+tools/patch-remove.sh
+
 # Sample / test music files in root (music/ dir is tracked)
 /*.ahk
 /*.mid
