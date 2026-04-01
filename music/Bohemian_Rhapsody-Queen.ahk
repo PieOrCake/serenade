@@ -3299,3 +3299,4 @@ SendInput {Numpad0}
 SendInput {Numpad6}
 SendInput {Numpad2}
 SendInput {F3}
+Sleep, 1000

@@ -2460,3 +2460,4 @@ SendInput {Numpad5}
 Sleep, 500
 Sleep, 500
 SendInput {Numpad1}
+Sleep, 1000

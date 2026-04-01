@@ -9,7 +9,9 @@ OUT=/output
 
 # Run PyInstaller
 cd /tmp
-pyinstaller --onefile --noconsole --name "Serenade Music Converter" "$SRC/midi2ahk.py"
+pyinstaller --onefile --noconsole --name "Serenade Music Converter" \
+    --add-data "$SRC/serenade-icon.png:." \
+    "$SRC/midi2ahk.py"
 
 # Assemble AppDir
 APPDIR=/tmp/AppDir

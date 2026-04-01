@@ -3028,3 +3028,4 @@ SendInput {Numpad0}
 SendInput {Numpad1}
 SendInput {Numpad3}
 SendInput {Numpad5}
+Sleep, 1000

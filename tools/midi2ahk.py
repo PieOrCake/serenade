@@ -13,6 +13,8 @@ GW2 Piano mapping (C Major instruments):
     GW2 piano has 3 octaves (low/mid/high).
 """
 
+__version__ = '1.0.0'
+
 import sys
 import webbrowser
 import os
@@ -40,7 +42,7 @@ from PyQt6.QtWidgets import (
     QTabWidget, QCheckBox, QSplitter, QScrollBar, QMenu
 )
 from PyQt6.QtCore import Qt, QSettings, QTimer, QThread, pyqtSignal, QRectF, QPointF
-from PyQt6.QtGui import QFont, QPainter, QColor, QPen, QBrush, QCursor, QPolygonF
+from PyQt6.QtGui import QFont, QPainter, QColor, QPen, QBrush, QCursor, QPolygonF, QIcon
 
 # ── GW2 Note Mapping ──────────────────────────────────────────────────────────
 
@@ -812,6 +814,9 @@ def convert(midi_file, output_file, track_indices=None, title=None, author=None,
 
         last_time_ms = group_time
 
+    # Trailing sleep so the last note has time to sustain
+    lines.append('Sleep, 1000')
+
     if chord_subs > 0:
         log.append(f"Chord substitutions: {chord_subs} triads replaced with GW2 chord mode")
 
@@ -1452,6 +1457,14 @@ class PianoRollWidget(QWidget):
         self._snap_ms = 0.0  # snap grid in ms (0 = no snap)
         self._gw2_only = False  # True = clamp to GW2 range (New/AHK)
 
+        # Undo / redo stacks (list of note snapshots)
+        self._undo_stack = []
+        self._redo_stack = []
+        self._undo_max = 50
+
+        # Clipboard
+        self._clipboard = []  # list of (relative_ms, duration_ms, pitch, velocity, track)
+
         # Scrollbars
         self._hscroll = QScrollBar(Qt.Orientation.Horizontal, self)
         self._hscroll.setFixedHeight(self.SCROLLBAR_SIZE)
@@ -1697,6 +1710,100 @@ class PianoRollWidget(QWidget):
         self._update_scrollbars()
         self.update()
 
+    def _snapshot(self, notes=None):
+        """Create a snapshot of the given notes (default: self._notes)."""
+        if notes is None:
+            notes = self._notes
+        snapshot = []
+        for n in notes:
+            sn = PianoRollNote(n.start_ms, n.duration_ms, n.pitch, n.velocity, n.track)
+            sn.selected = n.selected
+            sn.deleted = n.deleted
+            sn.warning = n.warning
+            snapshot.append(sn)
+        return snapshot
+
+    def pushUndo(self):
+        """Save a snapshot of the current notes for undo."""
+        self._undo_stack.append(self._snapshot())
+        if len(self._undo_stack) > self._undo_max:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+
+    def undo(self):
+        """Restore the last snapshot from the undo stack."""
+        if not self._undo_stack:
+            return False
+        self._redo_stack.append(self._snapshot())
+        if len(self._redo_stack) > self._undo_max:
+            self._redo_stack.pop(0)
+        self._notes[:] = self._undo_stack.pop()
+        self.notesChanged.emit()
+        self.update()
+        return True
+
+    def redo(self):
+        """Re-apply the last undone change."""
+        if not self._redo_stack:
+            return False
+        self._undo_stack.append(self._snapshot())
+        if len(self._undo_stack) > self._undo_max:
+            self._undo_stack.pop(0)
+        self._notes[:] = self._redo_stack.pop()
+        self.notesChanged.emit()
+        self.update()
+        return True
+
+    def copySelected(self):
+        """Copy selected notes to clipboard."""
+        sel = [n for n in self._notes if n.selected and not n.deleted]
+        if not sel:
+            return
+        min_ms = min(n.start_ms for n in sel)
+        self._clipboard = [(n.start_ms - min_ms, n.duration_ms, n.pitch, n.velocity, n.track) for n in sel]
+
+    def pasteClipboard(self):
+        """Paste clipboard notes at the current cursor or selection start."""
+        if not self._clipboard:
+            return
+        self.pushUndo()
+        # Paste at cursor if playing, else at selection start, else at scroll position
+        if self._cursor_ms >= 0:
+            paste_ms = self._cursor_ms
+        elif self._range_start_ms >= 0:
+            paste_ms = min(self._range_start_ms, self._range_end_ms)
+        else:
+            paste_ms = self._scroll_x
+        # Deselect all, then add pasted notes as selected
+        for n in self._notes:
+            n.selected = False
+        for rel_ms, dur, pitch, vel, track in self._clipboard:
+            nn = PianoRollNote(paste_ms + rel_ms, dur, pitch, vel, track)
+            nn.selected = True
+            self._notes.append(nn)
+        self.notesChanged.emit()
+        self.update()
+
+    def zoomIn(self):
+        """Zoom in by 30%, centered on the viewport middle."""
+        mid_ms = self._scroll_x + (self.width() - self.PIANO_WIDTH - self.SCROLLBAR_SIZE) / 2 / self._px_per_ms
+        self._px_per_ms = min(8.0, self._px_per_ms * 1.25)
+        new_mid_ms = self._scroll_x + (self.width() - self.PIANO_WIDTH - self.SCROLLBAR_SIZE) / 2 / self._px_per_ms
+        self._scroll_x += mid_ms - new_mid_ms
+        self._scroll_x = max(0, self._scroll_x)
+        self._update_scrollbars()
+        self.update()
+
+    def zoomOut(self):
+        """Zoom out by 30%, centered on the viewport middle."""
+        mid_ms = self._scroll_x + (self.width() - self.PIANO_WIDTH - self.SCROLLBAR_SIZE) / 2 / self._px_per_ms
+        self._px_per_ms = max(0.02, self._px_per_ms / 1.25)
+        new_mid_ms = self._scroll_x + (self.width() - self.PIANO_WIDTH - self.SCROLLBAR_SIZE) / 2 / self._px_per_ms
+        self._scroll_x += mid_ms - new_mid_ms
+        self._scroll_x = max(0, self._scroll_x)
+        self._update_scrollbars()
+        self.update()
+
     def setEditMode(self, mode):
         self._edit_mode = mode
         if mode == 'draw':
@@ -1732,7 +1839,7 @@ class PianoRollWidget(QWidget):
                 p.fillRect(0, int(y), self.PIANO_WIDTH - 2, self.NOTE_HEIGHT, QColor(80, 20, 20, 40))
             # Grid line
             if semi == 0:
-                p.setPen(QPen(QColor(65, 65, 65), 1))
+                p.setPen(QPen(QColor(90, 90, 90), 1, Qt.PenStyle.DotLine))
             else:
                 p.setPen(QPen(QColor(42, 42, 42), 1))
             p.drawLine(na_x, int(y), w, int(y))
@@ -2063,6 +2170,7 @@ class PianoRollWidget(QWidget):
             # Right-click to delete a note (in any mode)
             note = self._note_at(event.position())
             if note:
+                self.pushUndo()
                 note.deleted = True
                 note.selected = False
                 self.notesChanged.emit()
@@ -2116,6 +2224,7 @@ class PianoRollWidget(QWidget):
     def mouseReleaseEvent(self, event):
         if self._drawing:
             # Commit the drawn note
+            self.pushUndo()
             start = min(self._draw_start_ms, self._draw_end_ms)
             end = max(self._draw_start_ms, self._draw_end_ms)
             dur = end - start
@@ -2143,6 +2252,7 @@ class PianoRollWidget(QWidget):
             return
 
         if self._resizing:
+            self.pushUndo()
             self._resizing = False
             self._resize_note = None
             self.notesChanged.emit()
@@ -2155,6 +2265,7 @@ class PianoRollWidget(QWidget):
             offset_ms = self._snap(self._drag_offset_ms) if snap > 0 else self._drag_offset_ms
             offset_pitch = self._drag_offset_pitch
             if abs(offset_ms) > 1 or abs(offset_pitch) > 0:
+                self.pushUndo()
                 for n in self._notes:
                     if n.selected and not n.deleted:
                         n.start_ms = max(0, n.start_ms + offset_ms)
@@ -2261,6 +2372,7 @@ class PianoRollWidget(QWidget):
         action = menu.exec(global_pos)
         if action is None:
             return
+        self.pushUndo()
         count = 0
         if action == before_action:
             for n in self._notes:
@@ -2306,6 +2418,9 @@ class PianoRollWidget(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete:
+            has_selected = any(n.selected for n in self._notes)
+            if has_selected:
+                self.pushUndo()
             changed = False
             for n in self._notes:
                 if n.selected:
@@ -2327,14 +2442,89 @@ class PianoRollWidget(QWidget):
             self._range_end_ms = -1.0
             self.selectionChanged.emit()
             self.update()
+        elif event.key() == Qt.Key.Key_Z and event.modifiers() == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
+            self.redo()
         elif event.key() == Qt.Key.Key_Z and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            # Simple undo: undelete all
-            for n in self._notes:
-                n.deleted = False
-            self.notesChanged.emit()
-            self.update()
+            self.undo()
+        elif event.key() == Qt.Key.Key_Y and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.redo()
+        elif event.key() == Qt.Key.Key_C and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.copySelected()
+        elif event.key() == Qt.Key.Key_V and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.pasteClipboard()
         else:
             super().keyPressEvent(event)
+
+
+# ── Minimap Widget ────────────────────────────────────────────────────────────
+
+class MinimapWidget(QWidget):
+    seekRequested = pyqtSignal(float)  # ms
+
+    def __init__(self, main_window):
+        super().__init__()
+        self._main = main_window
+        self.setMinimumHeight(20)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(30, 30, 30))
+        mw = self._main
+        if not hasattr(mw, '_pr_notes') or not mw._pr_notes:
+            p.end()
+            return
+        active = [n for n in mw._pr_notes if not n.deleted]
+        if not active:
+            p.end()
+            return
+        w, h = self.width(), self.height()
+        min_ms = 0
+        max_ms = mw.piano_roll._total_ms
+        if max_ms <= 0:
+            p.end()
+            return
+        ms_scale = w / max_ms
+        min_p = mw.piano_roll._pitch_min
+        max_p = mw.piano_roll._pitch_max
+        p_range = max_p - min_p + 1
+        if p_range <= 0:
+            p_range = 1
+        for n in active:
+            x = n.start_ms * ms_scale
+            nw = max(1, n.duration_ms * ms_scale)
+            y = (max_p - n.pitch) / p_range * h
+            nh = max(1, h / p_range)
+            cidx = n.track % len(TRACK_COLORS)
+            r, g, b = TRACK_COLORS[cidx]
+            p.fillRect(int(x), int(y), max(1, int(nw)), max(1, int(nh)), QColor(r, g, b, 180))
+        # Draw viewport rectangle
+        pr = mw.piano_roll
+        vx = pr._scroll_x * ms_scale
+        vw = (pr.width() - pr.PIANO_WIDTH - pr.SCROLLBAR_SIZE) / pr._px_per_ms * ms_scale
+        p.setPen(QPen(QColor(255, 255, 255, 120), 1))
+        p.drawRect(int(vx), 0, int(vw), h - 1)
+        # Draw cursor
+        if pr._cursor_ms >= 0:
+            cx = pr._cursor_ms * ms_scale
+            p.setPen(QPen(QColor(255, 80, 80), 1))
+            p.drawLine(int(cx), 0, int(cx), h)
+        p.end()
+
+    def mousePressEvent(self, event):
+        self._seek_from_click(event)
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._seek_from_click(event)
+
+    def _seek_from_click(self, event):
+        mw = self._main
+        max_ms = mw.piano_roll._total_ms
+        if max_ms <= 0:
+            return
+        ms = event.position().x() / self.width() * max_ms
+        ms = max(0, min(max_ms, ms))
+        self.seekRequested.emit(ms)
 
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
@@ -2342,14 +2532,27 @@ class PianoRollWidget(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Serenade Music Converter")
+        self.setWindowTitle(f"Serenade Music Converter v{__version__}")
+        self.settings = QSettings('Serenade', 'MIDIConverter')
         self.setMinimumSize(1100, 800)
-        self.resize(1200, 900)
+        geo = self.settings.value('window_geometry')
+        if geo:
+            self.restoreGeometry(geo)
+        else:
+            self.resize(1200, 900)
+        # App icon (check PyInstaller _MEIPASS first, then script dir)
+        _base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        _icon_path = os.path.join(_base, 'serenade-icon.png')
+        if os.path.isfile(_icon_path):
+            self._app_icon = QIcon(_icon_path)
+            self.setWindowIcon(self._app_icon)
+        else:
+            self._app_icon = None
+        self.setAcceptDrops(True)
         self.midi_path = ""
         self.mid = None
         self.file_type = "midi"
         self.xml_root = None
-        self.settings = QSettings('Serenade', 'MIDIConverter')
         self._pr_notes = []  # PianoRollNote list
         self._current_instrument = GW2_INSTRUMENTS[0]  # default instrument
         self._pr_tracks = []  # track info dicts
@@ -2360,66 +2563,131 @@ class MainWindow(QMainWindow):
         main_layout.setSpacing(6)
         main_layout.setContentsMargins(8, 8, 8, 8)
 
-        # ── Top toolbar ───────────────────────────────────────────────
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(8)
+        # ── Menu bar ─────────────────────────────────────────────────
+        menubar = self.menuBar()
 
-        new_btn = QPushButton("New ▾")
-        new_btn.setMinimumHeight(30)
-        new_btn.setToolTip("Create a new blank song for a GW2 instrument")
-        new_menu = QMenu(new_btn)
+        file_menu = menubar.addMenu("&File")
+        new_menu = file_menu.addMenu("&New")
         for _inst_name, _inst_key, _inst_lo, _inst_hi in GW2_INSTRUMENTS:
             _oct = (_inst_hi - _inst_lo) // 12
             act = new_menu.addAction(f"{_inst_name}  ({_inst_key}, {_oct} oct)")
             _data = (_inst_name, _inst_key, _inst_lo, _inst_hi)
             act.triggered.connect(lambda checked, d=_data: self._new_song_instrument(d))
-        new_btn.setMenu(new_menu)
-        toolbar.addWidget(new_btn)
+        file_menu.addAction("&Import File...\tCtrl+O", self.browse_input)
+        self._recent_menu = file_menu.addMenu("&Recent Files")
+        self._rebuild_recent_menu()
+        file_menu.addSeparator()
+        self._save_ahk_action = file_menu.addAction("Save &AHK\tCtrl+S", self.do_convert)
+        self._save_ahk_action.setEnabled(False)
+        file_menu.addAction("Export &MIDI...", self._export_midi)
+        self._save_xml_action = file_menu.addAction("Save Music&XML", self.do_export_musicxml)
+        self._save_xml_action.setEnabled(False)
+        self._submit_action = file_menu.addAction("S&ubmit Song...", self.do_submit_song)
+        self._submit_action.setEnabled(False)
+        file_menu.addSeparator()
+        file_menu.addAction("&Batch Convert...", self._batch_convert)
+        file_menu.addSeparator()
+        file_menu.addAction("&Quit", self.close)
 
-        import_btn = QPushButton("Import File...")
-        import_btn.setMinimumHeight(30)
-        import_btn.clicked.connect(self.browse_input)
-        toolbar.addWidget(import_btn)
+        edit_menu = menubar.addMenu("&Edit")
+        edit_menu.addAction("&Undo\tCtrl+Z", lambda: self.piano_roll.undo())
+        edit_menu.addAction("&Redo\tCtrl+Y", lambda: self.piano_roll.redo())
+        edit_menu.addSeparator()
+        edit_menu.addAction("&Copy\tCtrl+C", lambda: self.piano_roll.copySelected())
+        edit_menu.addAction("&Paste\tCtrl+V", lambda: self.piano_roll.pasteClipboard())
+        edit_menu.addSeparator()
+        edit_menu.addAction("Select &All\tCtrl+A", lambda: [setattr(n, 'selected', True) for n in self._pr_notes if not n.deleted] or self.piano_roll.update())
+        edit_menu.addAction("&Delete Selected\tDel", self._delete_selected_notes)
+        edit_menu.addSeparator()
+        clamp_submenu = edit_menu.addMenu("Clamp to &Octave")
+        clamp_submenu.addAction("High (C5–B5)", lambda: self._clamp_to_octave(72))
+        clamp_submenu.addAction("Mid (C4–B4)", lambda: self._clamp_to_octave(60))
+        clamp_submenu.addAction("Low (C3–B3)", lambda: self._clamp_to_octave(48))
+        edit_menu.addAction("Octave &Up", lambda: self._shift_track_octave(12))
+        edit_menu.addAction("Octave &Down", lambda: self._shift_track_octave(-12))
 
-        self.input_label = QLabel("No file loaded")
-        self.input_label.setStyleSheet("color: #888;")
-        toolbar.addWidget(self.input_label, 1)
+        view_menu = menubar.addMenu("&View")
+        self._draw_action = view_menu.addAction("&Draw Mode\tCtrl+D")
+        self._draw_action.setCheckable(True)
+        self._draw_action.toggled.connect(self._toggle_edit_mode)
+        view_menu.addAction("Zoom &In\tCtrl+=", lambda: self.piano_roll.zoomIn())
+        view_menu.addAction("Zoom &Out\tCtrl+-", lambda: self.piano_roll.zoomOut())
+        self._snap_action = view_menu.addAction("&Snap to Grid")
+        self._snap_action.setCheckable(True)
+        self._snap_action.setChecked(False)
+        self._snap_action.toggled.connect(self._toggle_snap)
+        self._minimap_action = view_menu.addAction("&Minimap")
+        self._minimap_action.setCheckable(True)
+        self._minimap_action.setChecked(True)
+        self._minimap_action.toggled.connect(self._toggle_minimap)
+        view_menu.addSeparator()
+        theme_submenu = view_menu.addMenu("&Theme")
+        theme_submenu.addAction("Dark", lambda: self._set_theme('dark'))
+        theme_submenu.addAction("Light", lambda: self._set_theme('light'))
 
-        toolbar.addWidget(QLabel("Title:"))
+        tools_menu = menubar.addMenu("&Tools")
+        tools_menu.aboutToShow.connect(self._update_tools_menu_state)
+        self._tools_merge_act = tools_menu.addAction("&Merge Selected Tracks", self._merge_tracks)
+        self._tools_split_act = tools_menu.addAction("S&plit Track by Pitch", self._split_track_by_pitch)
+        self._tools_smart_oct_act = tools_menu.addAction("Smart &Octave Assignment", self._smart_octave)
+        tools_menu.addSeparator()
+        tools_menu.addAction("Remove &Duplicate Notes", self._remove_duplicates)
+        tools_menu.addAction("Merge S&hort Gaps", self._merge_short_gaps)
+        tools_menu.addAction("Edit Note &Velocity...", self._edit_velocity)
+
+        help_menu = menubar.addMenu("&Help")
+        help_menu.addAction("&Keyboard Shortcuts", self._show_shortcuts)
+        help_menu.addAction("&About", self._show_about)
+
+        # Hidden label for compatibility with code that sets input_label
+        self.input_label = QLabel()
+        self.input_label.hide()
+
+        # ── Toolbar: metadata + instrument + mode ────────────────────
+        toolbar2 = QHBoxLayout()
+        toolbar2.setSpacing(8)
+
+        toolbar2.addWidget(QLabel("Title:"))
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("Song title")
-        self.title_edit.setFixedWidth(180)
-        toolbar.addWidget(self.title_edit)
+        self.title_edit.setFixedWidth(200)
+        toolbar2.addWidget(self.title_edit)
 
-        toolbar.addWidget(QLabel("Artist:"))
+        toolbar2.addWidget(QLabel("Artist:"))
         self.author_edit = QLineEdit()
         self.author_edit.setPlaceholderText("Artist")
-        self.author_edit.setFixedWidth(140)
-        toolbar.addWidget(self.author_edit)
+        self.author_edit.setFixedWidth(160)
+        toolbar2.addWidget(self.author_edit)
 
-        toolbar.addSpacing(12)
-        self._analyze_btn = QPushButton("⚠ Analyze")
-        self._analyze_btn.setMinimumHeight(30)
-        self._analyze_btn.setToolTip("Check for notes that may be missed in GW2")
-        self._analyze_btn.clicked.connect(self._analyze_gw2)
-        toolbar.addWidget(self._analyze_btn)
+        toolbar2.addWidget(QLabel("Instrument:"))
+        self.instrument_combo = QComboBox()
+        for _inst_name, _inst_key, _inst_lo, _inst_hi in GW2_INSTRUMENTS:
+            _oct = (_inst_hi - _inst_lo) // 12
+            self.instrument_combo.addItem(f"{_inst_name} ({_inst_key}, {_oct} oct)",
+                                          (_inst_name, _inst_key, _inst_lo, _inst_hi))
+        self.instrument_combo.setCurrentIndex(0)
+        self.instrument_combo.currentIndexChanged.connect(self._on_instrument_changed)
+        toolbar2.addWidget(self.instrument_combo)
 
-        self._fix_btn = QPushButton("🔧 Fix")
-        self._fix_btn.setMinimumHeight(30)
-        self._fix_btn.setToolTip("Auto-fix timing issues for GW2 playback")
-        self._fix_btn.clicked.connect(self._fix_gw2)
-        toolbar.addWidget(self._fix_btn)
+        toolbar2.addStretch()
 
-        toolbar.addSpacing(12)
-        self._mode_btn = QPushButton("✏ Draw")
+        self._mode_btn = QPushButton("⬚ Select")
         self._mode_btn.setCheckable(True)
         self._mode_btn.setMinimumHeight(30)
-        self._mode_btn.setFixedWidth(80)
-        self._mode_btn.setToolTip("Toggle Draw mode to create notes (click grid to place)")
-        self._mode_btn.toggled.connect(self._toggle_edit_mode)
-        toolbar.addWidget(self._mode_btn)
+        self._mode_btn.setFixedWidth(120)
+        self._mode_btn.setToolTip("Toggle between Select and Draw mode (Ctrl+D)")
+        self._mode_btn.setStyleSheet(
+            "QPushButton { background-color: #2a3a4a; border: 2px solid #4a6a8a; border-radius: 4px; font-weight: bold; padding: 2px 8px; }"
+            "QPushButton:checked { background-color: #365; border-color: #6b6; color: #8f8; }")
+        self._mode_btn.toggled.connect(self._on_draw_btn_toggled)
+        toolbar2.addWidget(self._mode_btn)
 
-        main_layout.addLayout(toolbar)
+        # Hidden dummy widgets for enable/disable compatibility
+        self.convert_btn = QPushButton(); self.convert_btn.hide()
+        self.export_xml_btn = QPushButton(); self.export_xml_btn.hide()
+        self.submit_btn = QPushButton(); self.submit_btn.hide()
+
+        main_layout.addLayout(toolbar2)
 
         # ── Main content: left panel + piano roll ─────────────────────
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -2448,26 +2716,17 @@ class MainWindow(QMainWindow):
         tracks_layout.addLayout(track_btn_row)
 
         self.track_list = QListWidget()
-        self.track_list.setMinimumHeight(80)
-        self.track_list.setMaximumHeight(160)
-        tracks_layout.addWidget(self.track_list)
+        self.track_list.setMinimumHeight(120)
+        self.track_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.track_list.customContextMenuRequested.connect(self._on_track_context_menu)
+        tracks_layout.addWidget(self.track_list, 1)
 
-        oct_btn_row = QHBoxLayout()
-        self.oct_down_btn = QPushButton("Octave −")
-        self.oct_down_btn.setToolTip("Shift selected track down one octave")
-        self.oct_down_btn.clicked.connect(lambda: self._shift_track_octave(-12))
-        self.oct_up_btn = QPushButton("Octave +")
-        self.oct_up_btn.setToolTip("Shift selected track up one octave")
-        self.oct_up_btn.clicked.connect(lambda: self._shift_track_octave(12))
-        oct_btn_row.addWidget(self.oct_down_btn)
-        oct_btn_row.addWidget(self.oct_up_btn)
-        oct_btn_row.addStretch()
-        tracks_layout.addLayout(oct_btn_row)
+        left_layout.addWidget(self.tracks_group, 1)
 
-        left_layout.addWidget(self.tracks_group)
-
-        # Settings
-        settings_group = QGroupBox("Settings")
+        # Conversion settings (collapsible)
+        settings_group = QGroupBox("Conversion Settings")
+        settings_group.setCheckable(True)
+        settings_group.setChecked(False)
         settings_layout = QVBoxLayout(settings_group)
         settings_layout.setSpacing(4)
 
@@ -2492,26 +2751,9 @@ class MainWindow(QMainWindow):
         self.use_chords_cb.setChecked(False)
         settings_layout.addWidget(self.use_chords_cb)
 
-        settings_layout.addWidget(QLabel("Instrument:"))
-        self.instrument_combo = QComboBox()
-        for _inst_name, _inst_key, _inst_lo, _inst_hi in GW2_INSTRUMENTS:
-            _oct = (_inst_hi - _inst_lo) // 12
-            self.instrument_combo.addItem(f"{_inst_name} ({_inst_key}, {_oct} oct)",
-                                          (_inst_name, _inst_key, _inst_lo, _inst_hi))
-        self.instrument_combo.setCurrentIndex(0)  # Default to Piano
-        self.instrument_combo.currentIndexChanged.connect(self._on_instrument_changed)
-        settings_layout.addWidget(self.instrument_combo)
-
-        settings_layout.addStretch()
         left_layout.addWidget(settings_group)
 
-        # Piano roll help
-        help_label = QLabel("Scroll: wheel\nZoom: Ctrl+wheel\nH-scroll: Shift+wheel\nSelect: click/drag\nDelete: Del key\nUndo: Ctrl+Z")
-        help_label.setStyleSheet("color: #666; font-size: 10px;")
-        help_label.setWordWrap(True)
-        left_layout.addWidget(help_label)
-
-        left_widget.setFixedWidth(210)
+        left_widget.setFixedWidth(260)
         splitter.addWidget(left_widget)
 
         # Piano Roll
@@ -2543,52 +2785,38 @@ class MainWindow(QMainWindow):
         self.stop_btn.clicked.connect(self._playback_stop)
         transport.addWidget(self.stop_btn)
 
-        self.gw2_preview_cb = QCheckBox("GW2 Preview")
-        self.gw2_preview_cb.setToolTip("Simulate GW2 playback constraints:\n"
-                                        "• Flat velocity (no dynamics)\n"
-                                        "• Minimum note gaps (50ms)\n"
-                                        "• Octave change delay (60ms)\n"
-                                        "• Capped sustain (~800ms)")
-        self.gw2_preview_cb.setChecked(False)
-        self.gw2_preview_cb.toggled.connect(self._on_gw2_preview_toggled)
-        transport.addWidget(self.gw2_preview_cb)
+        # Hidden dummy for compatibility
+        self.gw2_preview_cb = QCheckBox()
+        self.gw2_preview_cb.hide()
+
+        self._loop_cb = QCheckBox("Loop")
+        self._loop_cb.setToolTip("Loop playback over the selected time range")
+        transport.addWidget(self._loop_cb)
 
         self.playback_slider = QProgressBar()
         self.playback_slider.setRange(0, 1000)
         self.playback_slider.setValue(0)
         self.playback_slider.setTextVisible(False)
         self.playback_slider.setFixedHeight(16)
+        self.playback_slider.mousePressEvent = self._on_progress_click
         transport.addWidget(self.playback_slider, 1)
 
         self.playback_time_label = QLabel("0:00 / 0:00")
         self.playback_time_label.setStyleSheet("color: #aaa; font-size: 11px;")
         transport.addWidget(self.playback_time_label)
 
-        self.convert_btn = QPushButton("Save AHK")
-        self.convert_btn.setEnabled(False)
-        self.convert_btn.setMinimumHeight(30)
-        font = self.convert_btn.font()
-        font.setBold(True)
-        self.convert_btn.setFont(font)
-        self.convert_btn.setStyleSheet("QPushButton { background-color: #2d5a2d; } QPushButton:hover { background-color: #3a7a3a; }")
-        self.convert_btn.clicked.connect(self.do_convert)
-        transport.addWidget(self.convert_btn)
-
-        self.export_xml_btn = QPushButton("Save MusicXML")
-        self.export_xml_btn.setEnabled(False)
-        self.export_xml_btn.setMinimumHeight(30)
-        self.export_xml_btn.setToolTip("Convert loaded MIDI to MusicXML for editing in MuseScore")
-        self.export_xml_btn.clicked.connect(self.do_export_musicxml)
-        transport.addWidget(self.export_xml_btn)
-
-        self.submit_btn = QPushButton("Submit Song")
-        self.submit_btn.setEnabled(False)
-        self.submit_btn.setMinimumHeight(30)
-        self.submit_btn.setToolTip("Submit your song for inclusion in the Serenade music library")
-        self.submit_btn.clicked.connect(self.do_submit_song)
-        transport.addWidget(self.submit_btn)
-
         main_layout.addLayout(transport)
+
+        # ── Stats bar ────────────────────────────────────────────────
+        self._stats_label = QLabel("")
+        self._stats_label.setStyleSheet("color: #888; font-size: 10px;")
+        main_layout.addWidget(self._stats_label)
+
+        # ── Minimap ──────────────────────────────────────────────────
+        self._minimap = MinimapWidget(self)
+        self._minimap.setFixedHeight(30)
+        self._minimap.seekRequested.connect(self._on_minimap_seek)
+        main_layout.insertWidget(main_layout.indexOf(splitter) + 1, self._minimap)
 
         # Playback state
         self._playback_sound = None
@@ -2703,6 +2931,84 @@ class MainWindow(QMainWindow):
         for i in range(self.track_list.count()):
             self.track_list.item(i).setCheckState(Qt.CheckState.Unchecked)
 
+    def _update_tools_menu_state(self):
+        has_track = self.track_list.currentItem() is not None
+        self._tools_merge_act.setEnabled(has_track)
+        self._tools_split_act.setEnabled(has_track)
+        self._tools_smart_oct_act.setEnabled(has_track)
+
+    def _on_track_context_menu(self, pos):
+        item = self.track_list.itemAt(pos)
+        if item is None:
+            return
+        idx = item.data(Qt.ItemDataRole.UserRole)
+        if idx is None:
+            return
+        menu = QMenu(self)
+        name = self._pr_tracks[idx]['name'] if idx < len(self._pr_tracks) else f"Track {idx}"
+        menu.addAction(f"Octave Up  ({name})", lambda: self._shift_track_octave(12))
+        menu.addAction(f"Octave Down  ({name})", lambda: self._shift_track_octave(-12))
+        clamp_sub = menu.addMenu("Clamp to Octave")
+        clamp_sub.addAction("High (C5–B5)", lambda: self._clamp_to_octave(72))
+        clamp_sub.addAction("Mid (C4–B4)", lambda: self._clamp_to_octave(60))
+        clamp_sub.addAction("Low (C3–B3)", lambda: self._clamp_to_octave(48))
+        menu.addSeparator()
+        menu.addAction("Smart Octave Assignment", self._smart_octave)
+        menu.addAction("Split by Pitch", self._split_track_by_pitch)
+        menu.addAction("Merge Checked Tracks", self._merge_tracks)
+        menu.addSeparator()
+        menu.addAction("Select All Notes", lambda: self._select_track_notes(idx))
+        menu.addAction("Delete Track Notes", lambda: self._delete_track_notes(idx))
+        menu.exec(self.track_list.mapToGlobal(pos))
+
+    def _select_track_notes(self, track_idx):
+        for n in self._pr_notes:
+            n.selected = (n.track == track_idx and not n.deleted)
+        self.piano_roll.update()
+
+    def _delete_track_notes(self, track_idx):
+        self.piano_roll.pushUndo()
+        count = 0
+        for n in self._pr_notes:
+            if n.track == track_idx and not n.deleted:
+                n.deleted = True
+                count += 1
+        if count:
+            self.piano_roll.notesChanged.emit()
+            self.piano_roll.update()
+            self.log(f"Deleted {count} notes from track {track_idx}")
+
+    def _clamp_to_octave(self, base_pitch):
+        """Clamp selected notes (or selected track's notes) into a single octave starting at base_pitch."""
+        # Determine which notes to clamp: selected notes first, else selected track
+        targets = [n for n in self._pr_notes if n.selected and not n.deleted]
+        source = "selected notes"
+        if not targets:
+            item = self.track_list.currentItem()
+            if item is None:
+                self.log("Select notes or a track first.")
+                return
+            idx = item.data(Qt.ItemDataRole.UserRole)
+            if idx is None:
+                return
+            targets = [n for n in self._pr_notes if n.track == idx and not n.deleted]
+            source = f"track '{self._pr_tracks[idx]['name']}'"
+        if not targets:
+            self.log("No notes to clamp.")
+            return
+        self.piano_roll.pushUndo()
+        nn = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+        oct_name = f"{nn[base_pitch % 12]}{base_pitch // 12 - 1}–{nn[(base_pitch + 11) % 12]}{(base_pitch + 11) // 12 - 1}"
+        count = 0
+        for n in targets:
+            new_pitch = base_pitch + (n.pitch % 12)
+            if new_pitch != n.pitch:
+                n.pitch = new_pitch
+                count += 1
+        self.piano_roll.update()
+        self.piano_roll.notesChanged.emit()
+        self.log(f"Clamped {count} of {len(targets)} {source} to {oct_name}")
+
     def _shift_track_octave(self, semitones):
         """Shift all notes in the selected track by the given number of semitones."""
         item = self.track_list.currentItem()
@@ -2712,6 +3018,7 @@ class MainWindow(QMainWindow):
         idx = item.data(Qt.ItemDataRole.UserRole)
         if idx is None:
             return
+        self.piano_roll.pushUndo()
         count = 0
         for note in self._pr_notes:
             if note.track == idx and not note.deleted:
@@ -2730,6 +3037,8 @@ class MainWindow(QMainWindow):
         self.xml_root = None
         self.file_type = "composed"
         self._current_instrument = inst_data
+        self.piano_roll._undo_stack.clear()
+        self.piano_roll._redo_stack.clear()
         self._pr_notes = []
         self._pr_tracks = [{
             'index': 0,
@@ -2752,17 +3061,14 @@ class MainWindow(QMainWindow):
 
         self._populate_track_list()
         self.play_btn.setEnabled(True)
-        self.convert_btn.setEnabled(True)
-        self.export_xml_btn.setEnabled(False)
-        self.submit_btn.setEnabled(True)
+        self._enable_export(ahk=True, xml=False, submit=True)
 
         nn = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
         lo_name = f"{nn[midi_lo % 12]}{midi_lo // 12 - 1}"
         hi_name = f"{nn[midi_hi % 12]}{midi_hi // 12 - 1}"
         octaves = (midi_hi - midi_lo) // 12
 
-        self.input_label.setText(f"New: {inst_name}")
-        self.input_label.setStyleSheet("color: #8f8;")
+        self.setWindowTitle(f"Serenade Music Converter v{__version__} — New: {inst_name}")
         self.title_edit.clear()
         self.author_edit.clear()
         self.log_text.clear()
@@ -2783,55 +3089,51 @@ class MainWindow(QMainWindow):
         # Auto-switch to draw mode
         self._mode_btn.setChecked(True)
 
-    def _analyze_gw2(self):
-        """Analyze notes for GW2 timing issues."""
-        if not self._pr_notes:
-            self.log("No notes to analyze.")
-            return
-        overlaps, too_close, octave_tight = analyze_gw2_issues(self._pr_notes)
-        fixable = too_close + octave_tight
-        self.piano_roll.update()
-        if overlaps:
-            self.log(f"ℹ {overlaps} chord notes (blue) — these are fine, sent as rapid keypresses")
-        if fixable == 0:
-            self.log("✓ No GW2 timing issues found!")
-        else:
-            self.log(f"⚠ Found {fixable} timing issues:")
-            if too_close:
-                self.log(f"  • {too_close} notes too close together (yellow) — need ≥{GW2_MIN_NOTE_DELAY_MS}ms gap")
-            if octave_tight:
-                self.log(f"  • {octave_tight} tight octave changes (orange) — need ≥{GW2_MIN_NOTE_DELAY_MS + GW2_OCTAVE_SWAP_DELAY_MS}ms gap")
-            self.log("Click 🔧 Fix to auto-resolve these issues.")
-
-    def _fix_gw2(self):
-        """Auto-fix GW2 timing issues."""
-        if not self._pr_notes:
-            self.log("No notes to fix.")
-            return
-        # Save undo state
-        if hasattr(self.piano_roll, '_undo_stack'):
-            import copy
-            self.piano_roll._undo_stack.append(copy.deepcopy(self._pr_notes))
-        # Pass instrument range to fixer
-        fix_gw2_issues._pitch_lo = self.piano_roll.GW2_PITCH_MIN
-        fix_gw2_issues._pitch_hi = self.piano_roll.GW2_PITCH_MAX
-        fixes = fix_gw2_issues(self._pr_notes)
-        if fixes == 0:
-            self.log("✓ No fixes needed.")
-            return
-        # Re-analyze to update warnings
-        overlaps, too_close, octave_tight = analyze_gw2_issues(self._pr_notes)
-        remaining = overlaps + too_close + octave_tight
-        self.piano_roll.update()
-        self._on_notes_changed()
-        self.log(f"🔧 Applied {fixes} fixes.")
-        fixable_remaining = too_close + octave_tight
-        if fixable_remaining:
-            self.log(f"  ⚠ {fixable_remaining} timing issues remain — run Fix again or adjust manually.")
-        else:
-            self.log("  ✓ All GW2 timing issues resolved!")
-        if overlaps:
-            self.log(f"  ℹ {overlaps} chord notes remain — these are fine.")
+    def _show_about(self):
+        from PyQt6.QtWidgets import QDialog, QDialogButtonBox
+        import webbrowser
+        dlg = QDialog(self)
+        dlg.setWindowTitle("About Serenade Music Converter")
+        layout = QVBoxLayout(dlg)
+        if self._app_icon:
+            icon_label = QLabel()
+            icon_label.setPixmap(self._app_icon.pixmap(64, 64))
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(icon_label)
+        text_label = QLabel(
+            f"<h3>Serenade Music Converter v{__version__}</h3>"
+            "<p>Convert MIDI, MusicXML, and AHK files for GW2 instrument playback.</p>"
+            "<p>Licensed under the <b>GNU General Public License v3.0</b> (GPL-3.0).<br>"
+            "This is free software; you are free to change and redistribute it.<br>"
+            "There is NO WARRANTY, to the extent permitted by law.</p>"
+            "<p><a href='https://www.gnu.org/licenses/gpl-3.0.html'>https://www.gnu.org/licenses/gpl-3.0.html</a></p>"
+            "<p><a href='https://pie.rocks.cc/'>Homepage: pie.rocks.cc</a></p>"
+            "<p><a href='https://ko-fi.com/pieorcake'>☕ Buy me a coffee!</a></p>")
+        text_label.setTextFormat(Qt.TextFormat.RichText)
+        text_label.setWordWrap(True)
+        text_label.setOpenExternalLinks(False)
+        def _open_link(url):
+            import subprocess, platform
+            try:
+                if platform.system() == 'Darwin':
+                    subprocess.Popen(['open', url])
+                elif platform.system() == 'Windows':
+                    os.startfile(url)
+                else:
+                    # Linux: clear AppImage's LD_LIBRARY_PATH to avoid lib conflicts
+                    env = dict(os.environ)
+                    for key in ('LD_LIBRARY_PATH', 'LD_PRELOAD'):
+                        env.pop(key, None)
+                    subprocess.Popen(['xdg-open', url], env=env)
+            except Exception as e:
+                import webbrowser
+                webbrowser.open(url)
+        text_label.linkActivated.connect(_open_link)
+        layout.addWidget(text_label)
+        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        btn_box.accepted.connect(dlg.accept)
+        layout.addWidget(btn_box)
+        dlg.exec()
 
     def _on_instrument_changed(self, index):
         """Update GW2 range boundaries when instrument changes."""
@@ -2854,15 +3156,67 @@ class MainWindow(QMainWindow):
             tidx_seq = self._pr_tracks.index(t)
             t['notes'] = sum(1 for n in self._pr_notes if not n.deleted and n.track == tidx_seq)
         self._populate_track_list()
+        self._update_stats()
+
+    def _enable_export(self, ahk=True, xml=True, submit=True):
+        """Enable/disable export buttons and corresponding menu actions."""
+        self.convert_btn.setEnabled(ahk)
+        self.export_xml_btn.setEnabled(xml)
+        self.submit_btn.setEnabled(submit)
+        self._save_ahk_action.setEnabled(ahk)
+        self._save_xml_action.setEnabled(xml)
+        self._submit_action.setEnabled(submit)
+
+    def _delete_selected_notes(self):
+        """Delete all selected notes in the piano roll."""
+        has_selected = any(n.selected for n in self._pr_notes)
+        if has_selected:
+            self.piano_roll.pushUndo()
+            for n in self._pr_notes:
+                if n.selected:
+                    n.deleted = True
+                    n.selected = False
+            self.piano_roll.notesChanged.emit()
+            self.piano_roll.update()
+
+    def _show_shortcuts(self):
+        """Show keyboard shortcuts dialog."""
+        QMessageBox.information(self, "Keyboard Shortcuts",
+            "Scroll: Mouse wheel\n"
+            "Zoom: Ctrl + Mouse wheel\n"
+            "Horizontal scroll: Shift + Mouse wheel\n"
+            "Select notes: Click / Drag\n"
+            "Multi-select: Ctrl + Click\n"
+            "Delete selected: Del key\n"
+            "Select all: Ctrl+A\n"
+            "Undo: Ctrl+Z\n"
+            "Redo: Ctrl+Y / Ctrl+Shift+Z\n"
+            "Copy: Ctrl+C\n"
+            "Paste: Ctrl+V\n"
+            "Zoom in: Ctrl+= / Ctrl+wheel up\n"
+            "Zoom out: Ctrl+- / Ctrl+wheel down\n"
+            "Draw mode: Ctrl+D\n\n"
+            "Right-click note: Delete note\n"
+            "Right-click ruler: Trim menu\n"
+            "Drag note edge: Resize note\n"
+            "Drag file onto window: Load file")
+
+    def _on_draw_btn_toggled(self, checked):
+        """Sync draw mode between toolbar button and menu action."""
+        self._draw_action.blockSignals(True)
+        self._draw_action.setChecked(checked)
+        self._draw_action.blockSignals(False)
+        self._toggle_edit_mode(checked)
 
     def _toggle_edit_mode(self, checked):
+        self._mode_btn.blockSignals(True)
+        self._mode_btn.setChecked(checked)
+        self._mode_btn.blockSignals(False)
         if checked:
             self._mode_btn.setText("✏ Draw")
-            self._mode_btn.setStyleSheet("background-color: #365; color: #8f8;")
             self.piano_roll.setEditMode('draw')
         else:
             self._mode_btn.setText("⬚ Select")
-            self._mode_btn.setStyleSheet("")
             self.piano_roll.setEditMode('select')
 
     def browse_input(self):
@@ -2872,13 +3226,21 @@ class MainWindow(QMainWindow):
             "Music Files (*.mid *.midi *.musicxml *.mxl *.ahk);;MIDI Files (*.mid *.midi);;MusicXML Files (*.musicxml *.mxl);;AHK Scripts (*.ahk);;All Files (*)")
         if not path:
             return
+        self._load_file(path)
 
+    def _load_file(self, path):
+        """Load a music file by path (used by browse, drag-drop, and recent files)."""
+        if not os.path.isfile(path):
+            self.log(f"File not found: {path}")
+            return
         self.settings.setValue('last_input_dir', os.path.dirname(path))
+        self._add_recent_file(path)
         ext = os.path.splitext(path)[1].lower()
 
         self.midi_path = path
-        self.input_label.setText(os.path.basename(path))
-        self.input_label.setStyleSheet("color: #ccc;")
+        self.setWindowTitle(f"Serenade Music Converter v{__version__} — {os.path.basename(path)}")
+        self.piano_roll._undo_stack.clear()
+        self.piano_roll._redo_stack.clear()
 
         if ext == '.ahk':
             self.file_type = "ahk"
@@ -2974,13 +3336,12 @@ class MainWindow(QMainWindow):
         else:
             pass  # output path set at save time
 
-        self.convert_btn.setEnabled(True)
-        self.export_xml_btn.setEnabled(self.file_type == "midi")
-        self.submit_btn.setEnabled(True)
+        self._enable_export(ahk=True, xml=(self.file_type == "midi"), submit=True)
         self.log_text.clear()
         self.log(f"Loaded: {os.path.basename(path)}")
         if self._pr_tracks:
             self.log(f"Tracks: {len(self._pr_tracks)}, Notes: {len([n for n in self._pr_notes if not n.deleted])}")
+        self._update_stats()
 
     def _flash_button(self, btn, text, color):
         original_text = btn.text()
@@ -3105,14 +3466,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Export Error", f"Failed to convert MIDI to MusicXML:\n{e}")
         finally:
             self.export_xml_btn.setEnabled(self.file_type == "midi")
-
-    def browse_output(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save AHK File", self.output_path.text(),
-            "AHK Scripts (*.ahk);;All Files (*)")
-        if path:
-            self.output_path.setText(path)
-            self.settings.setValue('last_output_dir', os.path.dirname(path))
 
     def do_convert(self):
         if not self.midi_path and not self._pr_notes:
@@ -3311,8 +3664,15 @@ class MainWindow(QMainWindow):
     def _playback_tick(self):
         elapsed = self._playback_elapsed_ms()
         if elapsed >= self._playback_total_ms:
-            self._playback_stop()
-            return
+            if self._loop_cb.isChecked() and self._playback_sound:
+                # Loop: restart audio and timer
+                import time
+                self._playback_sound.play()
+                self._playback_start_time = time.time() * 1000
+                elapsed = 0
+            else:
+                self._playback_stop()
+                return
         # Update progress
         progress = int(elapsed / self._playback_total_ms * 1000)
         self.playback_slider.setValue(progress)
@@ -3323,12 +3683,479 @@ class MainWindow(QMainWindow):
         # Update piano roll cursor (offset to match original timeline position)
         self.piano_roll.setCursorMs(elapsed + self._playback_offset_ms)
         self.piano_roll.ensureCursorVisible()
+        self._minimap.update()
+
+    # ── Drag and drop ─────────────────────────────────────────────
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                path = url.toLocalFile()
+                if path.lower().endswith(('.mid', '.midi', '.musicxml', '.mxl', '.ahk')):
+                    event.acceptProposedAction()
+                    return
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path and os.path.isfile(path):
+                self._load_file(path)
+                break
+
+    # ── Recent files ──────────────────────────────────────────────
+    def _rebuild_recent_menu(self):
+        self._recent_menu.clear()
+        recents = self.settings.value('recent_files', [])
+        if not recents:
+            act = self._recent_menu.addAction("(none)")
+            act.setEnabled(False)
+            return
+        for path in recents[:10]:
+            act = self._recent_menu.addAction(os.path.basename(path))
+            act.setToolTip(path)
+            act.triggered.connect(lambda checked, p=path: self._load_file(p))
+        self._recent_menu.addSeparator()
+        self._recent_menu.addAction("Clear Recent", lambda: (self.settings.setValue('recent_files', []), self._rebuild_recent_menu()))
+
+    def _add_recent_file(self, path):
+        recents = self.settings.value('recent_files', [])
+        if not isinstance(recents, list):
+            recents = []
+        if path in recents:
+            recents.remove(path)
+        recents.insert(0, path)
+        self.settings.setValue('recent_files', recents[:10])
+        self._rebuild_recent_menu()
+
+    # ── Stats bar ─────────────────────────────────────────────────
+    def _update_stats(self):
+        active = [n for n in self._pr_notes if not n.deleted]
+        if not active:
+            self._stats_label.setText("")
+            return
+        total = len(active)
+        dur_ms = max(n.start_ms + n.duration_ms for n in active)
+        dur_s = dur_ms / 1000
+        pitches = [n.pitch for n in active]
+        min_p, max_p = min(pitches), max(pitches)
+        octave_span = (max_p - min_p) // 12
+        # Count octave changes needed (simplified)
+        sorted_notes = sorted(active, key=lambda n: n.start_ms)
+        oct_changes = 0
+        inst_data = self.instrument_combo.currentData()
+        if inst_data:
+            oct_size = 12
+            prev_oct = -1
+            for n in sorted_notes:
+                cur_oct = (n.pitch - inst_data[2]) // oct_size
+                if prev_oct >= 0 and cur_oct != prev_oct:
+                    oct_changes += 1
+                prev_oct = cur_oct
+        out_of_range = 0
+        if inst_data:
+            out_of_range = sum(1 for n in active if n.pitch < inst_data[2] or n.pitch > inst_data[3])
+        self._stats_label.setText(
+            f"Notes: {total}  |  Duration: {dur_s:.1f}s  |  "
+            f"Octave span: {octave_span}  |  Octave changes: ~{oct_changes}  |  "
+            f"Out of range: {out_of_range}")
+        if hasattr(self, '_minimap'):
+            self._minimap.update()
+
+    # ── Click-to-seek (progress bar + minimap) ────────────────────
+    def _on_progress_click(self, event):
+        if self._playback_total_ms <= 0:
+            return
+        ratio = event.position().x() / self.playback_slider.width()
+        ratio = max(0, min(1, ratio))
+        ms = ratio * self._playback_total_ms
+        self._seek_to_ms(ms + self._playback_offset_ms)
+
+    def _on_minimap_seek(self, ms):
+        # Scroll the piano roll to this position
+        self.piano_roll._scroll_x = max(0, ms)
+        self.piano_roll._update_scrollbars()
+        self.piano_roll.update()
+        self._minimap.update()
+
+    def _seek_to_ms(self, ms):
+        """Seek playback to a specific ms position."""
+        self.piano_roll.setCursorMs(ms)
+        self.piano_roll.ensureCursorVisible()
+
+    # ── Toggle methods ────────────────────────────────────────────
+    def _toggle_snap(self, checked):
+        if checked:
+            bpm = 120
+            if hasattr(self.piano_roll, '_bpm') and self.piano_roll._bpm:
+                bpm = self.piano_roll._bpm
+            self.piano_roll._snap_ms = 60000.0 / bpm / 4  # snap to 1/16th notes
+        else:
+            self.piano_roll._snap_ms = 0.0
+
+    def _toggle_minimap(self, visible):
+        self._minimap.setVisible(visible)
+
+    def _set_theme(self, theme):
+        app = QApplication.instance()
+        if theme == 'light':
+            from PyQt6.QtGui import QPalette
+            pal = QPalette()
+            app.setPalette(pal)
+            app.setStyleSheet("")
+        else:
+            app.setStyle("Fusion")
+            from PyQt6.QtGui import QPalette
+            pal = QPalette()
+            pal.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+            pal.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+            pal.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+            pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(25, 25, 25))
+            pal.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
+            pal.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
+            pal.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+            pal.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
+            pal.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+            pal.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+            pal.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+            pal.setColor(QPalette.ColorRole.HighlightedText, QColor(35, 35, 35))
+            app.setPalette(pal)
+
+    # ── Tools: track operations ───────────────────────────────────
+    def _merge_tracks(self):
+        """Merge all checked tracks into the first checked track."""
+        checked = []
+        for i in range(self.track_list.count()):
+            item = self.track_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                checked.append(item.data(Qt.ItemDataRole.UserRole))
+        if len(checked) < 2:
+            self.log("Check at least 2 tracks to merge.")
+            return
+        self.piano_roll.pushUndo()
+        target = checked[0]
+        merged = 0
+        for n in self._pr_notes:
+            if n.track in checked[1:] and not n.deleted:
+                n.track = target
+                merged += 1
+        self.piano_roll.notesChanged.emit()
+        self.piano_roll.update()
+        self.log(f"Merged {merged} notes from {len(checked)-1} tracks into '{self._pr_tracks[target]['name']}'")
+        self._on_notes_changed()
+
+    def _split_track_by_pitch(self):
+        """Split selected track into upper and lower halves by median pitch."""
+        item = self.track_list.currentItem()
+        if item is None:
+            self.log("Select a track first.")
+            return
+        idx = item.data(Qt.ItemDataRole.UserRole)
+        track_notes = [n for n in self._pr_notes if n.track == idx and not n.deleted]
+        if not track_notes:
+            self.log("No notes in selected track.")
+            return
+        self.piano_roll.pushUndo()
+        median = sorted(n.pitch for n in track_notes)[len(track_notes) // 2]
+        new_idx = len(self._pr_tracks)
+        color = TRACK_COLORS[new_idx % len(TRACK_COLORS)]
+        self._pr_tracks.append({
+            'index': new_idx,
+            'name': f"{self._pr_tracks[idx]['name']} (high)",
+            'visible': True,
+            'color': color,
+            'notes': 0,
+        })
+        moved = 0
+        for n in track_notes:
+            if n.pitch >= median:
+                n.track = new_idx
+                moved += 1
+        self.piano_roll.notesChanged.emit()
+        self.piano_roll.update()
+        self.log(f"Split track: {moved} notes (≥{median}) moved to new track")
+        self._on_notes_changed()
+
+    def _smart_octave(self):
+        """Assign each track to the octave that minimizes out-of-range notes."""
+        if not self._pr_notes:
+            self.log("No notes loaded.")
+            return
+        inst_data = self.instrument_combo.currentData()
+        if not inst_data:
+            return
+        lo, hi = inst_data[2], inst_data[3]
+        self.piano_roll.pushUndo()
+        total_shifted = 0
+        for tidx, t in enumerate(self._pr_tracks):
+            track_notes = [n for n in self._pr_notes if n.track == tidx and not n.deleted]
+            if not track_notes:
+                continue
+            best_shift = 0
+            best_oor = len(track_notes)
+            for shift in range(-48, 49, 12):
+                oor = sum(1 for n in track_notes if (n.pitch + shift) < lo or (n.pitch + shift) > hi)
+                if oor < best_oor:
+                    best_oor = oor
+                    best_shift = shift
+            if best_shift != 0:
+                for n in track_notes:
+                    n.pitch += best_shift
+                total_shifted += len(track_notes)
+                direction = "up" if best_shift > 0 else "down"
+                self.log(f"  {t['name']}: shifted {abs(best_shift)//12} octaves {direction} ({best_oor} remaining out-of-range)")
+        self.piano_roll.notesChanged.emit()
+        self.piano_roll.update()
+        self.log(f"Smart octave: adjusted {total_shifted} notes across {len(self._pr_tracks)} tracks")
+
+    # ── Tools: note operations ────────────────────────────────────
+    def _remove_duplicates(self):
+        """Remove overlapping notes with identical pitch and start time."""
+        if not self._pr_notes:
+            return
+        self.piano_roll.pushUndo()
+        seen = set()
+        removed = 0
+        for n in sorted(self._pr_notes, key=lambda x: (x.start_ms, x.pitch)):
+            if n.deleted:
+                continue
+            key = (round(n.start_ms, 1), n.pitch)
+            if key in seen:
+                n.deleted = True
+                removed += 1
+            else:
+                seen.add(key)
+        self.piano_roll.notesChanged.emit()
+        self.piano_roll.update()
+        self.log(f"Removed {removed} duplicate notes")
+
+    def _merge_short_gaps(self):
+        """Merge notes separated by tiny gaps (< 50ms) into longer notes."""
+        if not self._pr_notes:
+            return
+        self.piano_roll.pushUndo()
+        active = sorted([n for n in self._pr_notes if not n.deleted], key=lambda x: (x.pitch, x.track, x.start_ms))
+        merged = 0
+        i = 0
+        while i < len(active) - 1:
+            a, b = active[i], active[i + 1]
+            if a.pitch == b.pitch and a.track == b.track:
+                gap = b.start_ms - (a.start_ms + a.duration_ms)
+                if 0 < gap < 50:
+                    a.duration_ms = (b.start_ms + b.duration_ms) - a.start_ms
+                    b.deleted = True
+                    merged += 1
+                    continue
+            i += 1
+        self.piano_roll.notesChanged.emit()
+        self.piano_roll.update()
+        self.log(f"Merged {merged} short gaps")
+
+    def _edit_velocity(self):
+        """Edit velocity of selected notes via dialog."""
+        sel = [n for n in self._pr_notes if n.selected and not n.deleted]
+        if not sel:
+            self.log("Select notes first.")
+            return
+        from PyQt6.QtWidgets import QInputDialog
+        val, ok = QInputDialog.getInt(self, "Edit Velocity", f"Velocity (1-127) for {len(sel)} notes:", sel[0].velocity, 1, 127)
+        if ok:
+            self.piano_roll.pushUndo()
+            for n in sel:
+                n.velocity = val
+            self.piano_roll.update()
+            self.log(f"Set velocity to {val} for {len(sel)} notes")
+
+    # ── Export MIDI ───────────────────────────────────────────────
+    def _export_midi(self):
+        """Export piano roll notes as a MIDI file."""
+        if not self._pr_notes:
+            QMessageBox.warning(self, "Warning", "No notes to export.")
+            return
+        import mido
+        path, _ = QFileDialog.getSaveFileName(self, "Export MIDI", "", "MIDI Files (*.mid);;All Files (*)")
+        if not path:
+            return
+        mid = mido.MidiFile(ticks_per_beat=480)
+        bpm = 120
+        us_per_beat = int(60_000_000 / bpm)
+        ticks_per_ms = 480 / (us_per_beat / 1000)
+        # Group notes by track
+        track_groups = {}
+        for n in self._pr_notes:
+            if not n.deleted:
+                track_groups.setdefault(n.track, []).append(n)
+        for tidx in sorted(track_groups):
+            trk = mido.MidiTrack()
+            mid.tracks.append(trk)
+            if tidx == 0:
+                trk.append(mido.MetaMessage('set_tempo', tempo=us_per_beat))
+            if tidx < len(self._pr_tracks):
+                trk.append(mido.MetaMessage('track_name', name=self._pr_tracks[tidx]['name']))
+            events = []
+            for n in track_groups[tidx]:
+                t_on = int(n.start_ms * ticks_per_ms)
+                t_off = int((n.start_ms + n.duration_ms) * ticks_per_ms)
+                events.append((t_on, 'note_on', n.pitch, n.velocity))
+                events.append((t_off, 'note_off', n.pitch, 0))
+            events.sort(key=lambda e: e[0])
+            prev_tick = 0
+            for tick, msg_type, pitch, vel in events:
+                delta = tick - prev_tick
+                trk.append(mido.Message(msg_type, note=pitch, velocity=vel, time=delta))
+                prev_tick = tick
+        mid.save(path)
+        self.log(f"Exported MIDI to {os.path.basename(path)}")
+
+    # ── Batch Convert ─────────────────────────────────────────────
+    def _batch_convert(self):
+        """Select multiple MIDI files and convert them all to AHK."""
+        files, _ = QFileDialog.getOpenFileNames(self, "Select MIDI Files", "",
+            "MIDI Files (*.mid *.midi);;All Files (*)")
+        if not files:
+            return
+        out_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+        if not out_dir:
+            return
+        transpose_data = self.transpose_combo.currentData()
+        chord_window = self.chord_window_combo.currentData()
+        inst_data = self.instrument_combo.currentData()
+        inst_name = inst_data[0] if inst_data else None
+        success_count = 0
+        for fpath in files:
+            basename = os.path.splitext(os.path.basename(fpath))[0]
+            outpath = os.path.join(out_dir, basename + '.ahk')
+            try:
+                ok, _ = convert(fpath, outpath, None, basename, None,
+                               transpose_data, chord_window_ms=chord_window,
+                               use_chords=self.use_chords_cb.isChecked(),
+                               instrument=inst_name)
+                if ok:
+                    success_count += 1
+                    self.log(f"  ✓ {basename}")
+                else:
+                    self.log(f"  ✗ {basename} (failed)")
+            except Exception as e:
+                self.log(f"  ✗ {basename}: {e}")
+        self.log(f"Batch convert: {success_count}/{len(files)} files converted")
+
+    # ── Session save / restore ─────────────────────────────────────
+
+    def _session_path(self):
+        return os.path.join(os.path.expanduser('~'), '.serenade_session.json')
+
+    def _save_session(self):
+        """Save current editing state for next session."""
+        import json
+        def _note_to_dict(n):
+            return {'s': n.start_ms, 'd': n.duration_ms, 'p': n.pitch,
+                    'v': n.velocity, 't': n.track, 'sel': n.selected,
+                    'del': n.deleted, 'w': n.warning}
+        def _notes_list(notes):
+            return [_note_to_dict(n) for n in notes]
+
+        session = {
+            'midi_path': self.midi_path,
+            'file_type': self.file_type,
+            'title': self.title_edit.text(),
+            'artist': self.author_edit.text(),
+            'instrument_idx': self.instrument_combo.currentIndex(),
+            'transpose_idx': self.transpose_combo.currentIndex(),
+            'chord_window_idx': self.chord_window_combo.currentIndex(),
+            'use_chords': self.use_chords_cb.isChecked(),
+            'notes': _notes_list(self._pr_notes),
+            'tracks': self._pr_tracks,
+            'scroll_x': self.piano_roll._scroll_x,
+            'scroll_y': self.piano_roll._scroll_y,
+            'px_per_ms': self.piano_roll._px_per_ms,
+            'total_ms': self.piano_roll._total_ms,
+            'gw2_only': self.piano_roll._gw2_only,
+            'pitch_min': self.piano_roll._pitch_min,
+            'pitch_max': self.piano_roll._pitch_max,
+            'gw2_pitch_min': self.piano_roll.GW2_PITCH_MIN,
+            'gw2_pitch_max': self.piano_roll.GW2_PITCH_MAX,
+        }
+        try:
+            with open(self._session_path(), 'w') as f:
+                json.dump(session, f, separators=(',', ':'))
+        except Exception:
+            pass
+
+    def _restore_session(self):
+        """Restore editing state from previous session."""
+        import json
+        path = self._session_path()
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, 'r') as f:
+                session = json.load(f)
+        except Exception:
+            return
+
+        def _dict_to_note(d):
+            n = PianoRollNote(d['s'], d['d'], d['p'], d['v'], d['t'])
+            n.selected = d.get('sel', False)
+            n.deleted = d.get('del', False)
+            n.warning = d.get('w', '')
+            return n
+
+        notes = [_dict_to_note(d) for d in session.get('notes', [])]
+        if not notes:
+            return
+
+        self.midi_path = session.get('midi_path', '')
+        self.file_type = session.get('file_type', 'midi')
+        self.title_edit.setText(session.get('title', ''))
+        self.author_edit.setText(session.get('artist', ''))
+        self.instrument_combo.setCurrentIndex(session.get('instrument_idx', 0))
+        self.transpose_combo.setCurrentIndex(session.get('transpose_idx', 0))
+        self.chord_window_combo.setCurrentIndex(session.get('chord_window_idx', 0))
+        self.use_chords_cb.setChecked(session.get('use_chords', False))
+
+        self._pr_tracks = session.get('tracks', [])
+        self._pr_notes = notes
+
+        # Restore piano roll state
+        pr = self.piano_roll
+        pr._gw2_only = session.get('gw2_only', False)
+        pr._pitch_min = session.get('pitch_min', 21)
+        pr._pitch_max = session.get('pitch_max', 108)
+        pr.GW2_PITCH_MIN = session.get('gw2_pitch_min', 48)
+        pr.GW2_PITCH_MAX = session.get('gw2_pitch_max', 83)
+        pr._total_ms = session.get('total_ms', 0)
+        pr._px_per_ms = session.get('px_per_ms', 0.2)
+
+        bpm = 120
+        pr.setNotes(self._pr_notes, self._pr_tracks, bpm)
+
+        pr._scroll_x = session.get('scroll_x', 0)
+        pr._scroll_y = session.get('scroll_y', 0)
+        pr._total_ms = session.get('total_ms', 0)
+        pr._update_scrollbars()
+        pr.update()
+
+
+        self._populate_track_list()
+        self.play_btn.setEnabled(True)
+        self._enable_export(ahk=True, xml=(self.file_type == 'midi'), submit=True)
+
+        label = os.path.basename(self.midi_path) if self.midi_path else "Restored session"
+        self.setWindowTitle(f"Serenade Music Converter v{__version__} — {label}")
+        self.log(f"Restored previous session: {len(self._pr_notes)} notes")
+
+    def closeEvent(self, event):
+        """Save session before closing."""
+        self.settings.setValue('window_geometry', self.saveGeometry())
+        if self._pr_notes:
+            self._save_session()
+        super().closeEvent(event)
 
 
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
+    window._restore_session()
     window.show()
     sys.exit(app.exec())
 

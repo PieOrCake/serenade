@@ -7258,3 +7258,4 @@ SendInput {Numpad0}
 SendInput {Numpad5}
 Sleep, 486
 SendInput {Numpad6}
+Sleep, 1000

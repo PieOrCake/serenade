@@ -2097,3 +2097,4 @@ Sleep, 300
 SendInput {F3}
 SendInput {Numpad6}
 SendInput {Numpad2}
+Sleep, 1000
