@@ -95,9 +95,26 @@ This software is provided as-is, with absolutely no warranty of any kind. Use at
 
 ## Serenade Music Converter
 
-The `tools/` directory contains **Serenade Music Converter**, a standalone Python/PyQt6 application for converting MIDI and MusicXML files into GW2-compatible AHK scripts. It features a piano roll editor, playback preview, GW2 instrument range clamping, and multi-track support.
+The `tools/` directory contains **Serenade Music Converter** (v1.1.0), a standalone Python/PyQt6 application for converting MIDI, MusicXML, and AHK files into GW2-compatible instrument scripts.
 
-Pre-built binaries for Linux (AppImage) and Windows (.exe) are available from the [GitHub Actions](../../actions) build artifacts.
+### Converter Features
+
+- **Piano Roll Editor** — full-featured note editor with draw/select modes, copy/paste, undo/redo
+- **Multi-Track Support** — per-track visibility, color coding, merge, split by pitch
+- **Melody Priority** — designate a track as melody to preserve it during conversion
+- **Per-Track Simplify** — reduce chord density to treble + bass with manual overrides (Ctrl+Shift+Click)
+- **Auto-Transpose** — automatically finds the transposition that minimizes octave changes
+- **GW2 Chord Mode** — detects major/minor triads and substitutes GW2's built-in chord keypresses
+- **Octave Smoothing** — optional smoothing of short octave excursions in fast passages
+- **Smart Octave Assignment** — intelligent octave placement for multi-track arrangements
+- **Playback Preview** — MIDI preview with Play, Play Here, Stop, and loop controls
+- **AHK Import** — load existing AHK scripts back into the piano roll for editing
+- **Drag & Drop** — drop MIDI, MusicXML, or AHK files onto the window to load
+- **Batch Convert** — convert multiple files at once
+- **Song Submission** — submit songs directly to the Serenade music library
+- **Dark/Light Themes** — switchable UI themes
+
+Pre-built binaries for Linux (AppImage) and Windows (.exe) are available from [Releases](../../releases).
 
 The Serenade Music Converter is licensed under the [GNU General Public License v3.0](LICENSE).
 
@@ -106,6 +123,7 @@ The Serenade Music Converter is licensed under the [GNU General Public License v
 - **[PyQt6](https://www.riverbankcomputing.com/software/pyqt/)** — GUI framework (GPL v3)
 - **[mido](https://github.com/mido/mido)** — MIDI file parsing (MIT)
 - **[pygame](https://www.pygame.org/)** — Audio playback (LGPL v2.1)
+- **[NumPy](https://numpy.org/)** — Numerical operations (BSD-3-Clause)
 - **[PyInstaller](https://pyinstaller.org/)** — Binary packaging (GPL v2+ with special exception)
 
 ## Contributing Songs

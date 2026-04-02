@@ -2345,4 +2345,3 @@ SendInput {Numpad9}
 SendInput {Numpad6}
 SendInput {Numpad1}
 SendInput {Numpad3}
-Sleep, 1000

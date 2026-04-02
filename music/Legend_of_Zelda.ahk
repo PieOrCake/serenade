@@ -799,4 +799,3 @@ Sleep, 115
 SendInput {Numpad3}
 Sleep, 231
 SendInput {Numpad3}
-Sleep, 1000

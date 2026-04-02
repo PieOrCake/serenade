@@ -25,8 +25,9 @@ tools/*.ahk
 tools/Serenade MIDI Converter
 tools/Serenade Music Converter
 
-# Local-only patches and scripts (never commit)
-tools/.musescore.patch
+# Local-only tools and patches (never commit)
+tools/.musescore*
+tools/.helper/
 tools/patch-apply.sh
 tools/patch-remove.sh
 
