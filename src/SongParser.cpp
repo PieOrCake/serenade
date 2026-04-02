@@ -760,8 +760,8 @@ Song LoadAHKFile(const std::string& filepath) {
             std::string numPart = cleaned.substr(6);
             if (numPart.size() == 1 && std::isdigit((unsigned char)numPart[0])) {
                 int digit = numPart[0] - '0';
-                if (digit == 9) return kOctaveUp;
-                if (digit == 0) return kOctaveDown;
+                if (digit == 9) return kOctaveDown;
+                if (digit == 0) return kOctaveUp;
                 return digit; // 1-8
             }
         }
@@ -769,8 +769,8 @@ Song LoadAHKFile(const std::string& filepath) {
         // Handle bare digit keys (e.g. {7} or {7 down})
         if (cleaned.size() == 1 && std::isdigit((unsigned char)cleaned[0])) {
             int digit = cleaned[0] - '0';
-            if (digit == 9) return kOctaveUp;
-            if (digit == 0) return kOctaveDown;
+            if (digit == 9) return kOctaveDown;
+            if (digit == 0) return kOctaveUp;
             return digit;
         }
 
