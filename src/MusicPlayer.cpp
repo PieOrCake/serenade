@@ -94,11 +94,13 @@ void MusicPlayer::Play() {
             m_Thread.join();
         }
 
-        // Start fresh
+        // Start fresh (unless seeking — SeekTo already set position)
         if (m_CurrentTrack < 0) m_CurrentTrack = 0;
-        m_CurrentEvent.store(0);
-        m_CurrentOctave = Octave::Mid;
-        m_ElapsedBeforeLastPause = 0.0f;
+        if (!m_SkipOctaveReset.load()) {
+            m_CurrentEvent.store(0);
+            m_CurrentOctave = Octave::Mid;
+            m_ElapsedBeforeLastPause = 0.0f;
+        }
         m_PlaybackStart = std::chrono::steady_clock::now();
 
         // Launch playback thread
@@ -136,6 +138,8 @@ void MusicPlayer::Stop() {
     m_CurrentOctave = Octave::Mid;
     m_ElapsedBeforeLastPause = 0.0f;
     m_ThreadRunning.store(false);
+    m_SkipOctaveReset.store(false);
+    m_SeekOffsetMs.store(0.0);
 }
 
 void MusicPlayer::Next() {
@@ -167,6 +171,99 @@ void MusicPlayer::Previous() {
     }
 
     if (wasPlaying && m_CurrentTrack >= 0) {
+        Play();
+    }
+}
+
+void MusicPlayer::SeekTo(float progress) {
+    const Song* song = GetCurrentSong();
+    if (!song || song->events.empty()) return;
+
+    progress = std::max(0.0f, std::min(1.0f, progress));
+    bool wasPlaying = IsPlaying();
+
+    // Stop the playback thread cleanly
+    m_ThreadStop.store(true);
+    if (wasPlaying || IsPaused()) {
+        m_State.store(PlaybackState::Stopped);
+    }
+    if (m_Thread.joinable()) {
+        m_Thread.join();
+    }
+
+    // Find target event from progress (by accumulated time)
+    int bpm = GetEffectiveBPM();
+    double beatMs = 60000.0 / static_cast<double>(bpm);
+    double totalMs = 0.0;
+    for (const auto& ev : song->events) {
+        totalMs += ev.durationBeats * beatMs;
+    }
+    double targetMs = progress * totalMs;
+
+    // Find the event at or just after targetMs
+    double accMs = 0.0;
+    int targetEvent = 0;
+    for (int i = 0; i < (int)song->events.size(); i++) {
+        if (accMs >= targetMs) {
+            targetEvent = i;
+            break;
+        }
+        accMs += song->events[i].durationBeats * beatMs;
+        targetEvent = i + 1;
+    }
+    targetEvent = std::min(targetEvent, (int)song->events.size() - 1);
+
+    // Walk back to include any 0-duration events (octave changes) before
+    // the target note, so the thread's "execute 0-duration" loop handles them
+    while (targetEvent > 0 && song->events[targetEvent - 1].durationBeats == 0.0f) {
+        targetEvent--;
+    }
+
+    // Compute octave state at this position by scanning events [0, targetEvent)
+    Octave targetOct = Octave::Mid;
+    for (int i = 0; i < targetEvent; i++) {
+        const auto& ev = song->events[i];
+        switch (ev.type) {
+            case EventType::OctaveUp:
+                targetOct = static_cast<Octave>(std::min(2, (int)targetOct + 1));
+                break;
+            case EventType::OctaveDown:
+                targetOct = static_cast<Octave>(std::max(0, (int)targetOct - 1));
+                break;
+            case EventType::OctaveSet:
+                targetOct = ev.targetOctave;
+                break;
+            default: break;
+        }
+    }
+
+    // Compute the accumulated time at targetEvent for the timeline offset
+    double seekMs = 0.0;
+    for (int i = 0; i < targetEvent; i++) {
+        seekMs += song->events[i].durationBeats * beatMs;
+    }
+
+    // Store target octave for the playback thread to set physically
+    // (don't set m_CurrentOctave here — SendOctaveChange needs to see a difference)
+    m_SeekTargetOctave = targetOct;
+
+    // Set up state for the playback thread
+    m_CurrentEvent.store(targetEvent);
+    m_SeekOffsetMs.store(seekMs);
+    m_SkipOctaveReset.store(true);
+    m_ElapsedBeforeLastPause = static_cast<float>(seekMs / 1000.0);
+
+    const char* octNames[] = {"Low", "Mid", "High"};
+    DebugLog("=== SEEK: progress=" + std::to_string(progress) +
+             " event=" + std::to_string(targetEvent) +
+             " time=" + std::to_string(seekMs) + "ms" +
+             " octave=" + octNames[(int)targetOct] + " ===");
+
+    m_ThreadRunning.store(false);
+
+    if (wasPlaying) {
+        // Restart playback from new position
+        m_State.store(PlaybackState::Stopped);
         Play();
     }
 }
@@ -361,63 +458,58 @@ void MusicPlayer::SendOctaveChange(Octave target) {
     const char* octNames[] = {"Low", "Mid", "High"};
     DebugLog("  OCTAVE: " + std::string(octNames[(int)m_CurrentOctave]) + " -> " + octNames[(int)target]);
 
-    // Self-correcting absolute positioning via batched SendInput:
-    // Always reset to Low (key 9 clamps there) then go up to target.
-    // All keypresses are batched into a single SendInput call for speed.
-    // This prevents drift from missed keypresses while being fast enough
-    // for arpeggios (~10ms total instead of ~850ms with individual calls).
     WORD downVk = m_KeyConfig.octaveDownKey;
     WORD upVk = m_KeyConfig.octaveUpKey;
     WORD downScan = (WORD)MapVirtualKeyA(downVk, MAPVK_VK_TO_VSC);
     WORD upScan = (WORD)MapVirtualKeyA(upVk, MAPVK_VK_TO_VSC);
 
-    // Press key 9 enough times to guarantee Low from any state (+2 safety margin)
-    int downPresses = static_cast<int>(m_CurrentOctave) + 2;
-    int upPresses = static_cast<int>(target);
-    int totalPresses = downPresses + upPresses;
+    // Split-batch absolute positioning:
+    // Batch 1: 3x key 9 (clamps at Low from any state, max 3 presses)
+    // Sleep:   let GW2 process the down presses
+    // Batch 2: target x key 0 (Low→target, max 2 presses)
+    //
+    // Each batch is ≤3 presses — within GW2's reliable processing limit.
+    // Always self-correcting: key 9 clamps at Low, so even if we were
+    // already at Low, the extra presses are harmless.
 
-    // 2 INPUT events per press (down + up)
-    std::vector<INPUT> inputs(totalPresses * 2);
-    int idx = 0;
+    int upPresses = static_cast<int>(target);  // 0=Low, 1=Mid, 2=High
 
-    // Down presses to reach Low
-    for (int i = 0; i < downPresses; i++) {
-        INPUT& down = inputs[idx++];
-        down = {};
-        down.type = INPUT_KEYBOARD;
-        down.ki.wVk = downVk;
-        down.ki.wScan = downScan;
-        down.ki.dwFlags = 0;
+    // Batch 1: reset to Low (3x key 9, always — clamps harmlessly)
+    INPUT downInputs[6] = {};
+    for (int i = 0; i < 3; i++) {
+        downInputs[i * 2].type = INPUT_KEYBOARD;
+        downInputs[i * 2].ki.wVk = downVk;
+        downInputs[i * 2].ki.wScan = downScan;
+        downInputs[i * 2].ki.dwFlags = 0;
+        downInputs[i * 2 + 1].type = INPUT_KEYBOARD;
+        downInputs[i * 2 + 1].ki.wVk = downVk;
+        downInputs[i * 2 + 1].ki.wScan = downScan;
+        downInputs[i * 2 + 1].ki.dwFlags = KEYEVENTF_KEYUP;
+    }
+    SendInput(6, downInputs, sizeof(INPUT));
 
-        INPUT& up = inputs[idx++];
-        up = {};
-        up.type = INPUT_KEYBOARD;
-        up.ki.wVk = downVk;
-        up.ki.wScan = downScan;
-        up.ki.dwFlags = KEYEVENTF_KEYUP;
+    if (upPresses > 0) {
+        // Brief pause so GW2 processes the down batch before the up batch
+        Sleep(20);
+
+        // Batch 2: go up to target (1-2x key 0)
+        std::vector<INPUT> upInputs(upPresses * 2);
+        for (int i = 0; i < upPresses; i++) {
+            upInputs[i * 2] = {};
+            upInputs[i * 2].type = INPUT_KEYBOARD;
+            upInputs[i * 2].ki.wVk = upVk;
+            upInputs[i * 2].ki.wScan = upScan;
+            upInputs[i * 2].ki.dwFlags = 0;
+            upInputs[i * 2 + 1] = {};
+            upInputs[i * 2 + 1].type = INPUT_KEYBOARD;
+            upInputs[i * 2 + 1].ki.wVk = upVk;
+            upInputs[i * 2 + 1].ki.wScan = upScan;
+            upInputs[i * 2 + 1].ki.dwFlags = KEYEVENTF_KEYUP;
+        }
+        SendInput((UINT)upInputs.size(), upInputs.data(), sizeof(INPUT));
     }
 
-    // Up presses to reach target
-    for (int i = 0; i < upPresses; i++) {
-        INPUT& down = inputs[idx++];
-        down = {};
-        down.type = INPUT_KEYBOARD;
-        down.ki.wVk = upVk;
-        down.ki.wScan = upScan;
-        down.ki.dwFlags = 0;
-
-        INPUT& up = inputs[idx++];
-        up = {};
-        up.type = INPUT_KEYBOARD;
-        up.ki.wVk = upVk;
-        up.ki.wScan = upScan;
-        up.ki.dwFlags = KEYEVENTF_KEYUP;
-    }
-
-    SendInput((UINT)inputs.size(), inputs.data(), sizeof(INPUT));
-    // Small settle time for GW2 to process the octave change before the next note
-    Sleep(10);
-
+    Sleep(10);  // settle time before next note
     m_CurrentOctave = target;
 }
 
@@ -430,28 +522,51 @@ void MusicPlayer::PlaybackThread() {
     // during the previous note's sustain, so the following note fires
     // exactly on schedule. This prevents octave change delays (~140ms)
     // from pushing notes late.
-    // Reset piano to known state: press 9 (decrease) 5 times to reach Low Major
-    // from any state (9 clamps at Low), then press 0 (increase) once to reach Mid.
-    // Use generous timing so GW2 reliably processes every key press.
-    DebugLog("=== RESET: pressing 9 x5, then 0 x1 to reach Mid octave ===");
-    int resetHoldMs = 50;     // key hold time
-    int resetDelayMs = 200;   // generous inter-press delay for reset
-    for (int i = 0; i < 5; i++) {
-        SendKeyDown(m_KeyConfig.octaveDownKey);
+    bool seekMode = m_SkipOctaveReset.exchange(false);
+    if (seekMode) {
+        // After a seek: set octave to the target computed by SeekTo.
+        // Reset m_CurrentOctave to force SendOctaveChange to send keys.
+        const char* octNames[] = {"Low", "Mid", "High"};
+        Octave seekTarget = m_SeekTargetOctave;
+        DebugLog("=== SEEK RESUME: setting octave to " +
+                 std::string(octNames[(int)seekTarget]) + " ===");
+        m_CurrentOctave = static_cast<Octave>((static_cast<int>(seekTarget) + 1) % 3);  // force different
+        SendOctaveChange(seekTarget);
+        m_OctaveChangeCount = 0;
+        Sleep(200);  // settle time before playing
+        DebugLog("=== SEEK RESUME: ready ===");
+    } else {
+        // Normal start: reset piano to known state
+        // Press 9 (decrease) 5 times to reach Low from any state (9 clamps at Low),
+        // then press 0 (increase) once to reach Mid.
+        DebugLog("=== RESET: pressing 9 x5, then 0 x1 to reach Mid octave ===");
+        int resetHoldMs = 50;     // key hold time
+        int resetDelayMs = 200;   // generous inter-press delay for reset
+        for (int i = 0; i < 5; i++) {
+            SendKeyDown(m_KeyConfig.octaveDownKey);
+            Sleep(resetHoldMs);
+            SendKeyUp(m_KeyConfig.octaveDownKey);
+            Sleep(resetDelayMs);
+        }
+        SendKeyDown(m_KeyConfig.octaveUpKey);
         Sleep(resetHoldMs);
-        SendKeyUp(m_KeyConfig.octaveDownKey);
+        SendKeyUp(m_KeyConfig.octaveUpKey);
         Sleep(resetDelayMs);
+        m_CurrentOctave = Octave::Mid;
+        m_OctaveChangeCount = 0;
+        Sleep(500);  // extra settle time after reset before playing
+        DebugLog("=== RESET complete: now at Mid octave ===");
     }
-    SendKeyDown(m_KeyConfig.octaveUpKey);
-    Sleep(resetHoldMs);
-    SendKeyUp(m_KeyConfig.octaveUpKey);
-    Sleep(resetDelayMs);
-    m_CurrentOctave = Octave::Mid;
-    Sleep(500);  // extra settle time after reset before playing
-    DebugLog("=== RESET complete: now at Mid octave ===");
 
     auto timelineStart = std::chrono::steady_clock::now();
     double accumulatedMs = 0.0;
+    if (seekMode) {
+        double seekMs = m_SeekOffsetMs.load();
+        accumulatedMs = seekMs;
+        // Shift timeline start backwards so waitUntil(seekMs) resolves to "now"
+        timelineStart -= std::chrono::microseconds(
+            static_cast<long long>(seekMs * 1000.0));
+    }
     double pauseOffset = 0.0;
 
     // Helper: wait until a target time on the timeline, staying responsive.

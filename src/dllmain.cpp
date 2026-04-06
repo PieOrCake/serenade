@@ -649,8 +649,35 @@ void AddonRender() {
 
         ImGui::InvisibleButton("##progress", ImVec2(barW, textH));
         bool barHovered = ImGui::IsItemHovered();
+        bool barActive = ImGui::IsItemActive();
 
-        float barH = barHovered ? 8.0f : 4.0f;
+        // Click or drag to seek
+        static bool s_Seeking = false;
+        float displayProgress = progress;
+        if (song && (barHovered || barActive)) {
+            float mouseX = ImGui::GetIO().MousePos.x - barAreaPos.x;
+            float seekProgress = mouseX / barW;
+            seekProgress = seekProgress < 0.0f ? 0.0f : (seekProgress > 1.0f ? 1.0f : seekProgress);
+
+            if (barActive) {
+                s_Seeking = true;
+                displayProgress = seekProgress;
+            }
+            if (s_Seeking && ImGui::IsMouseReleased(0)) {
+                g_Player.SeekTo(seekProgress);
+                s_Seeking = false;
+            }
+
+            // Hover tooltip: show time at mouse position
+            float hoverSec = seekProgress * total;
+            char hoverBuf[16];
+            FormatTime(hoverSec, hoverBuf, sizeof(hoverBuf));
+            ImGui::SetTooltip("%s", hoverBuf);
+        } else {
+            s_Seeking = false;
+        }
+
+        float barH = (barHovered || barActive) ? 8.0f : 4.0f;
         float rounding = barH * 0.5f;
         ImVec2 barPos = barAreaPos;
         barPos.y += (textH - barH) * 0.5f;
@@ -660,17 +687,17 @@ void AddonRender() {
                           IM_COL32(35, 35, 40, 200), rounding);
 
         // Filled portion
-        if (progress > 0.001f) {
-            float fillW = barW * (progress < 1.0f ? progress : 1.0f);
+        if (displayProgress > 0.001f) {
+            float fillW = barW * (displayProgress < 1.0f ? displayProgress : 1.0f);
             if (fillW < barH) fillW = barH;
-            ImU32 colL = barHovered ? IM_COL32(210, 165, 60, 255) : IM_COL32(190, 145, 50, 255);
-            ImU32 colR = barHovered ? IM_COL32(250, 200, 90, 255) : IM_COL32(230, 185, 70, 255);
+            ImU32 colL = (barHovered || barActive) ? IM_COL32(210, 165, 60, 255) : IM_COL32(190, 145, 50, 255);
+            ImU32 colR = (barHovered || barActive) ? IM_COL32(250, 200, 90, 255) : IM_COL32(230, 185, 70, 255);
             dl->AddRectFilledMultiColor(barPos, ImVec2(barPos.x + fillW, barPos.y + barH),
                                         colL, colR, colR, colL);
             dl->AddRectFilled(barPos, ImVec2(barPos.x + fillW, barPos.y + barH),
                               IM_COL32(0, 0, 0, 0), rounding);
 
-            if (barHovered) {
+            if (barHovered || barActive) {
                 dl->AddCircleFilled(ImVec2(barPos.x + fillW, barPos.y + barH * 0.5f),
                                     barH * 0.8f, IM_COL32(255, 220, 120, 255));
             }

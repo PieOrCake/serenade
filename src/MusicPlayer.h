@@ -66,6 +66,7 @@ public:
     void Stop();
     void Next();
     void Previous();
+    void SeekTo(float progress);  // Seek to position (0.0-1.0)
 
     // State
     PlaybackState GetState() const { return m_State.load(); }
@@ -154,12 +155,18 @@ private:
     int m_DirectPlayLibIdx = -1;         // Direct play from library (-1 = off)
     std::atomic<int> m_CurrentEvent{0}; // Index into current song's events
     Octave m_CurrentOctave = Octave::Mid;
+    int m_OctaveChangeCount = 0;           // For periodic re-sync
 
     // Timing
     int m_BPMOverride = 0;
     std::chrono::steady_clock::time_point m_PlaybackStart;
     float m_ElapsedBeforeLastPause = 0.0f;
     std::chrono::steady_clock::time_point m_LastPrevPressTime{};
+
+    // Seek support
+    std::atomic<double> m_SeekOffsetMs{0.0};
+    std::atomic<bool> m_SkipOctaveReset{false};
+    Octave m_SeekTargetOctave = Octave::Mid;
 
     // Song data
     std::vector<Song> m_Library;

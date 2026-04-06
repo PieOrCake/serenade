@@ -5,6 +5,7 @@
 #include <fstream>
 #include <filesystem>
 #include <wininet.h>
+#include <shellapi.h>
 #include "../lib/nlohmann_json.hpp"
 
 namespace Serenade {
@@ -156,6 +157,10 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
         if (!m_OnlineFetching) {
             FetchOnlineSongs();
         }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Create your own music")) {
+        ShellExecuteA(NULL, "open", "https://pie.rocks.cc/projects/serenade-converter/", NULL, NULL, SW_SHOWNORMAL);
     }
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.45f, 0.50f, 1.0f));
