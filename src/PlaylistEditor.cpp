@@ -298,16 +298,22 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
 
     const auto& library = player.GetSongLibrary();
 
-    // Collect unique instrument names and counts for tabs
-    std::map<std::string, int> instrumentCounts;
-    for (const auto& song : library) {
-        std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
-        instrumentCounts[inst]++;
+    // Rebuild instrument counts only when library changes
+    if (library.size() != m_CachedLibSize) {
+        m_CachedLibSize = library.size();
+        m_CachedInstCounts.clear();
+        for (const auto& song : library) {
+            std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+            m_CachedInstCounts[inst]++;
+        }
+        m_CachedInstruments.clear();
+        for (const auto& pair : m_CachedInstCounts) {
+            m_CachedInstruments.push_back(pair.first);
+        }
+        m_CachedInstTab = -1; // force artist list rebuild
     }
-    std::vector<std::string> instruments;
-    for (const auto& pair : instrumentCounts) {
-        instruments.push_back(pair.first);
-    }
+    const auto& instrumentCounts = m_CachedInstCounts;
+    const auto& instruments = m_CachedInstruments;
 
     // Instrument tabs
     if (ImGui::BeginTabBar("##InstrumentTabs")) {
@@ -323,7 +329,9 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
         }
         for (int t = 0; t < (int)instruments.size(); t++) {
             char tabLabel[64];
-            snprintf(tabLabel, sizeof(tabLabel), "%s (%d)", instruments[t].c_str(), instrumentCounts[instruments[t]]);
+            auto it = instrumentCounts.find(instruments[t]);
+            int cnt = (it != instrumentCounts.end()) ? it->second : 0;
+            snprintf(tabLabel, sizeof(tabLabel), "%s (%d)", instruments[t].c_str(), cnt);
             if (ImGui::BeginTabItem(tabLabel)) {
                 if (m_SelectedInstrumentTab != t + 1) {
                     m_SelectedInstrumentTab = t + 1;
@@ -341,16 +349,20 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
         activeInstrument = instruments[m_SelectedInstrumentTab - 1];
     }
 
-    // Collect unique artists for the current instrument tab
-    std::set<std::string> libArtistSet;
-    for (const auto& song : library) {
-        if (!activeInstrument.empty()) {
-            std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
-            if (inst != activeInstrument) continue;
+    // Rebuild artist list only when instrument tab changes
+    if (m_CachedInstTab != m_SelectedInstrumentTab) {
+        m_CachedInstTab = m_SelectedInstrumentTab;
+        std::set<std::string> libArtistSet;
+        for (const auto& song : library) {
+            if (!activeInstrument.empty()) {
+                std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+                if (inst != activeInstrument) continue;
+            }
+            if (!song.author.empty()) libArtistSet.insert(song.author);
         }
-        if (!song.author.empty()) libArtistSet.insert(song.author);
+        m_CachedLibArtists.assign(libArtistSet.begin(), libArtistSet.end());
     }
-    std::vector<std::string> libArtists(libArtistSet.begin(), libArtistSet.end());
+    const auto& libArtists = m_CachedLibArtists;
 
     // Artist dropdown + text filter on the same line
     ImGui::SetNextItemWidth(160);
@@ -390,47 +402,65 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
         ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, 50.0f);
         ImGui::TableHeadersRow();
 
-        // Build filtered index list (stored for Add All button)
-        m_FilteredLibrary.clear();
-        std::vector<int>& filtered = m_FilteredLibrary;
-        for (int i = 0; i < (int)library.size(); i++) {
-            const auto& song = library[i];
-            // Instrument tab filter
-            if (!activeInstrument.empty()) {
-                std::string songInst = song.instrument.empty() ? "Unknown" : song.instrument;
-                if (songInst != activeInstrument) continue;
-            }
-            // Artist filter
-            if (!activeArtist.empty() && song.author != activeArtist) continue;
-            // Text filter
-            if (!filterStr.empty()) {
-                std::string titleLower = song.title;
-                std::transform(titleLower.begin(), titleLower.end(), titleLower.begin(), ::tolower);
-                std::string authorLower = song.author;
-                std::transform(authorLower.begin(), authorLower.end(), authorLower.begin(), ::tolower);
-                if (titleLower.find(filterStr) == std::string::npos &&
-                    authorLower.find(filterStr) == std::string::npos) {
-                    continue;
-                }
-            }
-            filtered.push_back(i);
-        }
-
-        // Sort by column header clicks
+        // Detect sort spec changes
+        int sortCol = -1, sortDir = 0;
         if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
             if (specs->SpecsCount > 0) {
-                const auto& spec = specs->Specs[0];
-                int col = spec.ColumnIndex;
-                bool asc = (spec.SortDirection == ImGuiSortDirection_Ascending);
-                std::sort(filtered.begin(), filtered.end(), [&](int a, int b) {
+                sortCol = specs->Specs[0].ColumnIndex;
+                sortDir = specs->Specs[0].SortDirection;
+            }
+        }
+
+        // Rebuild filtered+sorted list only when inputs change
+        bool filterDirty = (filterStr != m_CachedLibFilter)
+                        || (m_LibraryArtistFilter != m_CachedArtistFilter)
+                        || (m_SelectedInstrumentTab != m_CachedInstTab)
+                        || (library.size() != m_CachedLibSize)
+                        || (sortCol != m_CachedSortCol)
+                        || (sortDir != m_CachedSortDir);
+        if (filterDirty) {
+            m_CachedLibFilter = filterStr;
+            m_CachedArtistFilter = m_LibraryArtistFilter;
+            m_CachedSortCol = sortCol;
+            m_CachedSortDir = sortDir;
+
+            m_FilteredLibrary.clear();
+            for (int i = 0; i < (int)library.size(); i++) {
+                const auto& song = library[i];
+                // Instrument tab filter
+                if (!activeInstrument.empty()) {
+                    std::string songInst = song.instrument.empty() ? "Unknown" : song.instrument;
+                    if (songInst != activeInstrument) continue;
+                }
+                // Artist filter
+                if (!activeArtist.empty() && song.author != activeArtist) continue;
+                // Text filter
+                if (!filterStr.empty()) {
+                    std::string titleLower = song.title;
+                    std::transform(titleLower.begin(), titleLower.end(), titleLower.begin(), ::tolower);
+                    std::string authorLower = song.author;
+                    std::transform(authorLower.begin(), authorLower.end(), authorLower.begin(), ::tolower);
+                    if (titleLower.find(filterStr) == std::string::npos &&
+                        authorLower.find(filterStr) == std::string::npos) {
+                        continue;
+                    }
+                }
+                m_FilteredLibrary.push_back(i);
+            }
+
+            // Sort
+            if (sortCol >= 0) {
+                bool asc = (sortDir == ImGuiSortDirection_Ascending);
+                std::sort(m_FilteredLibrary.begin(), m_FilteredLibrary.end(), [&](int a, int b) {
                     int cmp = 0;
-                    if (col == 0)      cmp = _stricmp(library[a].title.c_str(), library[b].title.c_str());
-                    else if (col == 1) cmp = _stricmp(library[a].author.c_str(), library[b].author.c_str());
-                    else if (col == 3) cmp = (library[a].GetTotalDurationSeconds() < library[b].GetTotalDurationSeconds()) ? -1 : 1;
+                    if (sortCol == 0)      cmp = _stricmp(library[a].title.c_str(), library[b].title.c_str());
+                    else if (sortCol == 1) cmp = _stricmp(library[a].author.c_str(), library[b].author.c_str());
+                    else if (sortCol == 3) cmp = (library[a].GetTotalDurationSeconds() < library[b].GetTotalDurationSeconds()) ? -1 : 1;
                     return asc ? (cmp < 0) : (cmp > 0);
                 });
             }
         }
+        const auto& filtered = m_FilteredLibrary;
 
         for (int idx : filtered) {
             const auto& song = library[idx];
@@ -957,16 +987,22 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
         return;
     }
 
-    // Collect unique instruments and counts
-    std::map<std::string, int> onlineInstCounts;
-    for (const auto& song : m_OnlineSongs) {
-        std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
-        onlineInstCounts[inst]++;
+    // Rebuild online instrument counts only when song list changes
+    if (m_OnlineSongs.size() != m_CachedOnlineSize) {
+        m_CachedOnlineSize = m_OnlineSongs.size();
+        m_CachedOnlineInstCounts.clear();
+        for (const auto& song : m_OnlineSongs) {
+            std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+            m_CachedOnlineInstCounts[inst]++;
+        }
+        m_CachedOnlineInstruments.clear();
+        for (const auto& pair : m_CachedOnlineInstCounts) {
+            m_CachedOnlineInstruments.push_back(pair.first);
+        }
+        m_CachedOnlineInstTab = -1; // force artist list rebuild
     }
-    std::vector<std::string> onlineInstruments;
-    for (const auto& pair : onlineInstCounts) {
-        onlineInstruments.push_back(pair.first);
-    }
+    const auto& onlineInstCounts = m_CachedOnlineInstCounts;
+    const auto& onlineInstruments = m_CachedOnlineInstruments;
 
     // Instrument tabs
     if (ImGui::BeginTabBar("##OnlineInstrumentTabs")) {
@@ -981,7 +1017,9 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
         }
         for (int t = 0; t < (int)onlineInstruments.size(); t++) {
             char tabLabel[64];
-            snprintf(tabLabel, sizeof(tabLabel), "%s (%d)", onlineInstruments[t].c_str(), onlineInstCounts[onlineInstruments[t]]);
+            auto it = onlineInstCounts.find(onlineInstruments[t]);
+            int cnt = (it != onlineInstCounts.end()) ? it->second : 0;
+            snprintf(tabLabel, sizeof(tabLabel), "%s (%d)", onlineInstruments[t].c_str(), cnt);
             if (ImGui::BeginTabItem(tabLabel)) {
                 if (m_OnlineInstrumentTab != t + 1) {
                     m_OnlineInstrumentTab = t + 1;
@@ -999,16 +1037,20 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
         selectedInstrument = onlineInstruments[m_OnlineInstrumentTab - 1];
     }
 
-    // Collect unique artists for the current instrument tab
-    std::set<std::string> artistSet;
-    for (const auto& song : m_OnlineSongs) {
-        if (!selectedInstrument.empty()) {
-            std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
-            if (inst != selectedInstrument) continue;
+    // Rebuild artist list only when instrument tab changes
+    if (m_CachedOnlineInstTab != m_OnlineInstrumentTab) {
+        m_CachedOnlineInstTab = m_OnlineInstrumentTab;
+        std::set<std::string> artistSet;
+        for (const auto& song : m_OnlineSongs) {
+            if (!selectedInstrument.empty()) {
+                std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+                if (inst != selectedInstrument) continue;
+            }
+            if (!song.author.empty()) artistSet.insert(song.author);
         }
-        if (!song.author.empty()) artistSet.insert(song.author);
+        m_CachedOnlineArtists.assign(artistSet.begin(), artistSet.end());
     }
-    std::vector<std::string> artists(artistSet.begin(), artistSet.end());
+    const auto& artists = m_CachedOnlineArtists;
 
     // Artist dropdown + text filter on the same line
     ImGui::SetNextItemWidth(160);
@@ -1050,43 +1092,62 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
         ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, 55.0f);
         ImGui::TableHeadersRow();
 
-        // Build filtered index list
+        // Detect sort spec changes
+        int sortCol = -1, sortDir = 0;
+        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
+            if (specs->SpecsCount > 0) {
+                sortCol = specs->Specs[0].ColumnIndex;
+                sortDir = specs->Specs[0].SortDirection;
+            }
+        }
+
+        // Rebuild filtered+sorted list only when inputs change
         auto toLower = [](std::string s) {
             std::transform(s.begin(), s.end(), s.begin(), ::tolower);
             return s;
         };
-        std::vector<int> filtered;
-        for (int i = 0; i < (int)m_OnlineSongs.size(); i++) {
-            const auto& song = m_OnlineSongs[i];
-            if (!m_ShowDownloaded && song.downloaded) continue;
-            // Instrument tab filter
-            if (!selectedInstrument.empty()) {
-                std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
-                if (inst != selectedInstrument) continue;
-            }
-            // Artist filter
-            if (!selectedArtist.empty() && song.author != selectedArtist) continue;
-            // Text filter
-            if (!filterStr.empty()) {
-                bool match = toLower(song.name).find(filterStr) != std::string::npos
-                          || toLower(song.title).find(filterStr) != std::string::npos
-                          || toLower(song.author).find(filterStr) != std::string::npos
-                          || toLower(song.instrument).find(filterStr) != std::string::npos;
-                if (!match) continue;
-            }
-            filtered.push_back(i);
-        }
+        bool onlineDirty = (filterStr != m_CachedOnlineFilter)
+                        || (m_OnlineArtistFilter != m_CachedOnlineArtistIdx)
+                        || (m_OnlineInstrumentTab != m_CachedOnlineInstTab)
+                        || (m_ShowDownloaded != m_CachedShowDownloaded)
+                        || (m_OnlineSongs.size() != m_CachedOnlineSize)
+                        || (sortCol != m_CachedOnlineSortCol)
+                        || (sortDir != m_CachedOnlineSortDir);
+        if (onlineDirty) {
+            m_CachedOnlineFilter = filterStr;
+            m_CachedOnlineArtistIdx = m_OnlineArtistFilter;
+            m_CachedShowDownloaded = m_ShowDownloaded;
+            m_CachedOnlineSortCol = sortCol;
+            m_CachedOnlineSortDir = sortDir;
 
-        // Sort by column header clicks
-        if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs()) {
-            if (specs->SpecsCount > 0) {
-                const auto& spec = specs->Specs[0];
-                int col = spec.ColumnIndex;
-                bool asc = (spec.SortDirection == ImGuiSortDirection_Ascending);
-                std::sort(filtered.begin(), filtered.end(), [&](int a, int b) {
+            m_CachedOnlineFiltered.clear();
+            for (int i = 0; i < (int)m_OnlineSongs.size(); i++) {
+                const auto& song = m_OnlineSongs[i];
+                if (!m_ShowDownloaded && song.downloaded) continue;
+                // Instrument tab filter
+                if (!selectedInstrument.empty()) {
+                    std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+                    if (inst != selectedInstrument) continue;
+                }
+                // Artist filter
+                if (!selectedArtist.empty() && song.author != selectedArtist) continue;
+                // Text filter
+                if (!filterStr.empty()) {
+                    bool match = toLower(song.name).find(filterStr) != std::string::npos
+                              || toLower(song.title).find(filterStr) != std::string::npos
+                              || toLower(song.author).find(filterStr) != std::string::npos
+                              || toLower(song.instrument).find(filterStr) != std::string::npos;
+                    if (!match) continue;
+                }
+                m_CachedOnlineFiltered.push_back(i);
+            }
+
+            // Sort
+            if (sortCol >= 0) {
+                bool asc = (sortDir == ImGuiSortDirection_Ascending);
+                std::sort(m_CachedOnlineFiltered.begin(), m_CachedOnlineFiltered.end(), [&](int a, int b) {
                     int cmp = 0;
-                    if (col == 1) {
-                        // Sort by display name (title, falling back to filename)
+                    if (sortCol == 1) {
                         auto dispName = [&](const OnlineSong& s) -> std::string {
                             if (!s.title.empty()) return s.title;
                             std::string n = s.name;
@@ -1095,9 +1156,9 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
                             return n;
                         };
                         cmp = _stricmp(dispName(m_OnlineSongs[a]).c_str(), dispName(m_OnlineSongs[b]).c_str());
-                    } else if (col == 2) {
+                    } else if (sortCol == 2) {
                         cmp = _stricmp(m_OnlineSongs[a].author.c_str(), m_OnlineSongs[b].author.c_str());
-                    } else if (col == 4) {
+                    } else if (sortCol == 4) {
                         cmp = (m_OnlineSongs[a].size < m_OnlineSongs[b].size) ? -1 : (m_OnlineSongs[a].size > m_OnlineSongs[b].size) ? 1 : 0;
                     }
                     return asc ? (cmp < 0) : (cmp > 0);
@@ -1105,7 +1166,7 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
             }
         }
 
-        for (int i : filtered) {
+        for (int i : m_CachedOnlineFiltered) {
             const auto& song = m_OnlineSongs[i];
 
             ImGui::PushID(i);

@@ -38,6 +38,7 @@ struct Song {
     std::string filepath;       // Source file path on disk
     int bpm;                    // Beats per minute
     std::vector<NoteEvent> events;
+    mutable float cachedDuration = -1.0f; // Lazy-cached total duration
 
     float GetTotalDurationSeconds() const;
     bool IsValid() const { return !events.empty() && bpm > 0; }

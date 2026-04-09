@@ -4,6 +4,7 @@
 #include <imgui.h>
 #include <string>
 #include <vector>
+#include <map>
 #include <functional>
 #include "MusicPlayer.h"
 
@@ -89,6 +90,30 @@ private:
 
     // Filtered library indices (built by RenderLibraryPane, used by RenderActionButtons)
     std::vector<int> m_FilteredLibrary;
+
+    // Cached library metadata (recomputed only when library changes or filters change)
+    size_t m_CachedLibSize = 0;                          // detect library refresh
+    std::map<std::string, int> m_CachedInstCounts;       // instrument -> count
+    std::vector<std::string> m_CachedInstruments;        // sorted instrument names
+    int m_CachedInstTab = -1;                            // last instrument tab
+    int m_CachedArtistFilter = -1;                       // last artist filter index
+    std::string m_CachedLibFilter;                       // last text filter
+    std::vector<std::string> m_CachedLibArtists;         // artist list for current tab
+    int m_CachedSortCol = -1;                            // last sort column
+    int m_CachedSortDir = 0;                             // last sort direction
+
+    // Cached online pane metadata
+    size_t m_CachedOnlineSize = 0;
+    std::map<std::string, int> m_CachedOnlineInstCounts;
+    std::vector<std::string> m_CachedOnlineInstruments;
+    int m_CachedOnlineInstTab = -1;
+    int m_CachedOnlineArtistIdx = -1;
+    std::string m_CachedOnlineFilter;
+    bool m_CachedShowDownloaded = true;
+    std::vector<std::string> m_CachedOnlineArtists;
+    std::vector<int> m_CachedOnlineFiltered;
+    int m_CachedOnlineSortCol = -1;
+    int m_CachedOnlineSortDir = 0;
 
     // Auto-scroll to current track (smooth)
     int m_LastCurrentTrack = -1;

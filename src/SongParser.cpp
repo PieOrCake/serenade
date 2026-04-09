@@ -10,12 +10,14 @@
 namespace Serenade {
 
 float Song::GetTotalDurationSeconds() const {
-    if (bpm <= 0) return 0.0f;
+    if (cachedDuration >= 0.0f) return cachedDuration;
+    if (bpm <= 0) { cachedDuration = 0.0f; return 0.0f; }
     float totalBeats = 0.0f;
     for (const auto& ev : events) {
         totalBeats += ev.durationBeats;
     }
-    return totalBeats * 60.0f / static_cast<float>(bpm);
+    cachedDuration = totalBeats * 60.0f / static_cast<float>(bpm);
+    return cachedDuration;
 }
 
 // Helper: trim whitespace
