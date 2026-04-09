@@ -130,6 +130,12 @@ public:
     void SaveKeyConfig(const std::string& filepath) const;
     void LoadKeyConfig(const std::string& filepath);
 
+    // Chat announcement
+    void SetAnnounceEnabled(bool enabled) { m_AnnounceEnabled = enabled; }
+    bool GetAnnounceEnabled() const { return m_AnnounceEnabled; }
+    void SetAnnounceFormat(const std::string& fmt) { m_AnnounceFormat = fmt; }
+    const std::string& GetAnnounceFormat() const { return m_AnnounceFormat; }
+
     // WndProc handle for sending keys
     void SetGameWindow(HWND hwnd) { m_GameWindow = hwnd; }
 
@@ -141,6 +147,8 @@ private:
     void PlaybackThread();
     void SendNoteKeys(const std::vector<int>& keys);
     void SendOctaveChange(Octave target);
+    void SendChatMessage(const std::string& message);
+    void AnnounceCurrentSong();
     void AdvanceTrack();
     int ResolveNextTrack() const;
     int ResolvePrevTrack() const;
@@ -184,8 +192,15 @@ private:
     std::atomic<bool> m_ThreadStop{false};
     std::mutex m_Mutex;
 
+    // Shuffle history (recently played playlist indices, most recent at back)
+    std::deque<int> m_ShuffleHistory;
+
     // Game window handle
     HWND m_GameWindow = nullptr;
+
+    // Chat announcement
+    bool m_AnnounceEnabled = false;
+    std::string m_AnnounceFormat = "Now serenading: %s by %a %l";
 
     // Debug log (file-based)
     std::string m_DebugLogPath;

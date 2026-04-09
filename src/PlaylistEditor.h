@@ -61,6 +61,7 @@ private:
     int m_SelectedLibraryItem = -1;
     int m_SelectedPlaylistItem = -1;
     int m_SelectedInstrumentTab = 0;    // 0 = All, 1+ = specific instrument
+    int m_LibraryArtistFilter = 0;      // 0 = All Artists, 1+ = specific artist
     std::function<void()> m_RefreshCb;
 
     // Online songs state
@@ -72,6 +73,8 @@ private:
     char m_OnlineFilter[128] = "";
     bool m_ShowOnlinePane = false;
     bool m_ShowDownloaded = true;     // "show music I already have" checkbox
+    int m_OnlineInstrumentTab = 0;    // 0 = All, 1+ = specific instrument
+    int m_OnlineArtistFilter = 0;     // 0 = All Artists, 1+ = specific artist
 
     // Context menu / edit state
     int m_ContextMenuLibIdx = -1;     // library index for right-click menu
@@ -86,6 +89,11 @@ private:
 
     // Filtered library indices (built by RenderLibraryPane, used by RenderActionButtons)
     std::vector<int> m_FilteredLibrary;
+
+    // Auto-scroll to current track (smooth)
+    int m_LastCurrentTrack = -1;
+    float m_ScrollTargetY = -1.0f;     // -1 = no active scroll animation
+    bool m_ScrollTargetPending = false; // waiting to capture row position
 
     // Drag-and-drop reorder state
     int m_DragSourceIdx = -1;         // playlist index being dragged

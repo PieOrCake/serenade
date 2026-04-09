@@ -2,11 +2,17 @@
 #include <algorithm>
 #include <cstring>
 #include <set>
+#include <map>
+#include <cmath>
 #include <fstream>
 #include <filesystem>
 #include <wininet.h>
 #include <shellapi.h>
 #include "../lib/nlohmann_json.hpp"
+
+// Defined in dllmain.cpp
+extern void PushGW2Theme();
+extern void PopGW2Theme();
 
 namespace Serenade {
 
@@ -106,40 +112,12 @@ PlaylistEditor::PlaylistEditor() {}
 bool PlaylistEditor::Render(MusicPlayer& player) {
     if (!m_Visible) return false;
 
-    // Match player window styling
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 10));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6, 5));
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.08f, 0.08f, 0.10f, 0.94f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.10f, 0.10f, 0.12f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.14f, 0.13f, 0.11f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.30f, 0.25f, 0.15f, 0.5f));
-    // Child pane backgrounds
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.06f, 0.06f, 0.07f, 0.8f));
-    // Buttons
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.18f, 0.22f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.28f, 0.26f, 0.20f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.35f, 0.30f, 0.18f, 1.0f));
-    // Tabs
-    ImGui::PushStyleColor(ImGuiCol_Tab, ImVec4(0.12f, 0.12f, 0.14f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TabHovered, ImVec4(0.30f, 0.25f, 0.15f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_TabActive, ImVec4(0.35f, 0.28f, 0.12f, 1.0f));
-    // Selectables
-    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.20f, 0.18f, 0.12f, 0.6f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.30f, 0.25f, 0.15f, 0.8f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.40f, 0.32f, 0.18f, 1.0f));
-    // Frame (input fields)
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.12f, 0.12f, 0.14f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.18f, 0.18f, 0.22f, 1.0f));
-    // Separator
-    ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.25f, 0.22f, 0.15f, 0.5f));
+    PushGW2Theme();
 
     ImGui::SetNextWindowSize(ImVec2(700, 500), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Serenade - Playlist Editor", &m_Visible, ImGuiWindowFlags_NoCollapse)) {
         ImGui::End();
-        ImGui::PopStyleColor(17);
-        ImGui::PopStyleVar(4);
+        PopGW2Theme();
         return m_Visible;
     }
 
@@ -308,9 +286,7 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
     }
 
     ImGui::End();
-
-    ImGui::PopStyleColor(17);
-    ImGui::PopStyleVar(4);
+    PopGW2Theme();
     return m_Visible;
 }
 
@@ -322,23 +298,37 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
 
     const auto& library = player.GetSongLibrary();
 
-    // Collect unique instrument names for tabs
-    std::set<std::string> instrumentSet;
+    // Collect unique instrument names and counts for tabs
+    std::map<std::string, int> instrumentCounts;
     for (const auto& song : library) {
-        instrumentSet.insert(song.instrument.empty() ? "Unknown" : song.instrument);
+        std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+        instrumentCounts[inst]++;
     }
-    std::vector<std::string> instruments(instrumentSet.begin(), instrumentSet.end());
+    std::vector<std::string> instruments;
+    for (const auto& pair : instrumentCounts) {
+        instruments.push_back(pair.first);
+    }
 
     // Instrument tabs
     if (ImGui::BeginTabBar("##InstrumentTabs")) {
         // "All" tab
-        if (ImGui::BeginTabItem("All")) {
-            m_SelectedInstrumentTab = 0;
+        char allLabel[64];
+        snprintf(allLabel, sizeof(allLabel), "All (%d)", (int)library.size());
+        if (ImGui::BeginTabItem(allLabel)) {
+            if (m_SelectedInstrumentTab != 0) {
+                m_SelectedInstrumentTab = 0;
+                m_LibraryArtistFilter = 0;
+            }
             ImGui::EndTabItem();
         }
         for (int t = 0; t < (int)instruments.size(); t++) {
-            if (ImGui::BeginTabItem(instruments[t].c_str())) {
-                m_SelectedInstrumentTab = t + 1;
+            char tabLabel[64];
+            snprintf(tabLabel, sizeof(tabLabel), "%s (%d)", instruments[t].c_str(), instrumentCounts[instruments[t]]);
+            if (ImGui::BeginTabItem(tabLabel)) {
+                if (m_SelectedInstrumentTab != t + 1) {
+                    m_SelectedInstrumentTab = t + 1;
+                    m_LibraryArtistFilter = 0;
+                }
                 ImGui::EndTabItem();
             }
         }
@@ -351,11 +341,44 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
         activeInstrument = instruments[m_SelectedInstrumentTab - 1];
     }
 
+    // Collect unique artists for the current instrument tab
+    std::set<std::string> libArtistSet;
+    for (const auto& song : library) {
+        if (!activeInstrument.empty()) {
+            std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+            if (inst != activeInstrument) continue;
+        }
+        if (!song.author.empty()) libArtistSet.insert(song.author);
+    }
+    std::vector<std::string> libArtists(libArtistSet.begin(), libArtistSet.end());
+
+    // Artist dropdown + text filter on the same line
+    ImGui::SetNextItemWidth(160);
+    if (ImGui::BeginCombo("##LibArtistFilter", m_LibraryArtistFilter == 0 ? "All Artists" :
+            (m_LibraryArtistFilter <= (int)libArtists.size() ? libArtists[m_LibraryArtistFilter - 1].c_str() : "All Artists"))) {
+        if (ImGui::Selectable("All Artists", m_LibraryArtistFilter == 0)) {
+            m_LibraryArtistFilter = 0;
+        }
+        for (int a = 0; a < (int)libArtists.size(); a++) {
+            bool sel = (m_LibraryArtistFilter == a + 1);
+            if (ImGui::Selectable(libArtists[a].c_str(), sel)) {
+                m_LibraryArtistFilter = a + 1;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
-    ImGui::InputTextWithHint("##LibFilter", "Filter...", m_LibraryFilter, sizeof(m_LibraryFilter));
+    ImGui::InputTextWithHint("##LibFilter", "Search...", m_LibraryFilter, sizeof(m_LibraryFilter));
 
     std::string filterStr(m_LibraryFilter);
     std::transform(filterStr.begin(), filterStr.end(), filterStr.begin(), ::tolower);
+
+    // Determine selected artist name
+    std::string activeArtist;
+    if (m_LibraryArtistFilter > 0 && m_LibraryArtistFilter <= (int)libArtists.size()) {
+        activeArtist = libArtists[m_LibraryArtistFilter - 1];
+    }
 
     if (ImGui::BeginTable("##LibTable", 4,
             ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
@@ -372,10 +395,14 @@ void PlaylistEditor::RenderLibraryPane(MusicPlayer& player) {
         std::vector<int>& filtered = m_FilteredLibrary;
         for (int i = 0; i < (int)library.size(); i++) {
             const auto& song = library[i];
+            // Instrument tab filter
             if (!activeInstrument.empty()) {
                 std::string songInst = song.instrument.empty() ? "Unknown" : song.instrument;
                 if (songInst != activeInstrument) continue;
             }
+            // Artist filter
+            if (!activeArtist.empty() && song.author != activeArtist) continue;
+            // Text filter
             if (!filterStr.empty()) {
                 std::string titleLower = song.title;
                 std::transform(titleLower.begin(), titleLower.end(), titleLower.begin(), ::tolower);
@@ -540,6 +567,16 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
     const auto& library = player.GetSongLibrary();
     int currentTrack = player.GetCurrentTrackIndex();
 
+    // Detect track change for auto-scroll
+    if (currentTrack >= 0 && currentTrack != m_LastCurrentTrack) {
+        if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
+            m_ScrollTargetPending = true;
+        }
+        m_LastCurrentTrack = currentTrack;
+    } else if (currentTrack < 0) {
+        m_LastCurrentTrack = -1;
+    }
+
     if (ImGui::BeginTable("##PlTable", 5,
             ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
             ImGuiTableFlags_BordersInnerV)) {
@@ -580,6 +617,18 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
             snprintf(buf, sizeof(buf), "##pl_%d", i);
             if (ImGui::Selectable(buf, selected, ImGuiSelectableFlags_SpanAllColumns)) {
                 m_SelectedPlaylistItem = i;
+            }
+
+            // Capture scroll target when pending
+            if (isCurrent && m_ScrollTargetPending) {
+                float itemY = ImGui::GetCursorPosY() - ImGui::GetScrollY();
+                float windowH = ImGui::GetWindowHeight();
+                float targetScroll = ImGui::GetCursorPosY() - windowH * 0.3f;
+                if (targetScroll < 0.0f) targetScroll = 0.0f;
+                float maxScroll = ImGui::GetScrollMaxY();
+                if (targetScroll > maxScroll) targetScroll = maxScroll;
+                m_ScrollTargetY = targetScroll;
+                m_ScrollTargetPending = false;
             }
 
             // --- Drag source ---
@@ -643,6 +692,9 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
             if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
                 player.JumpToTrack(i);
                 if (!player.IsPlaying()) player.Play();
+                m_LastCurrentTrack = i;
+                m_ScrollTargetY = -1.0f;
+                m_ScrollTargetPending = false;
             }
 
             // Right-click context menu
@@ -651,6 +703,9 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
                 if (ImGui::MenuItem("Play")) {
                     player.JumpToTrack(i);
                     if (!player.IsPlaying()) player.Play();
+                    m_LastCurrentTrack = i;
+                    m_ScrollTargetY = -1.0f;
+                    m_ScrollTargetPending = false;
                 }
                 ImGui::Separator();
                 if (ImGui::MenuItem("Edit Metadata...")) {
@@ -710,6 +765,21 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
             m_Dragging = false;
             m_DragSourceIdx = -1;
             m_DragTargetIdx = -1;
+        }
+
+        // Smooth scroll animation (cancel if mouse is hovering)
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
+            m_ScrollTargetY = -1.0f;
+            m_ScrollTargetPending = false;
+        } else if (m_ScrollTargetY >= 0.0f) {
+            float current = ImGui::GetScrollY();
+            float diff = m_ScrollTargetY - current;
+            if (std::abs(diff) < 1.0f) {
+                ImGui::SetScrollY(m_ScrollTargetY);
+                m_ScrollTargetY = -1.0f;
+            } else {
+                ImGui::SetScrollY(current + diff * 0.15f);
+            }
         }
 
         ImGui::EndTable();
@@ -846,14 +916,18 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
     }
     ImGui::SameLine();
     if (!m_OnlineSongs.empty()) {
-        // Download All button
+        // Download All New button (always visible, disabled when nothing to download)
         int notDownloaded = 0;
         for (const auto& s : m_OnlineSongs) {
             if (!s.downloaded && !s.downloading) notDownloaded++;
         }
-        if (notDownloaded > 0) {
-            char label[64];
-            snprintf(label, sizeof(label), "Download All (%d)", notDownloaded);
+        char label[64];
+        snprintf(label, sizeof(label), "Download All New (%d)", notDownloaded);
+        if (notDownloaded == 0) {
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+            ImGui::Button(label);
+            ImGui::PopStyleVar();
+        } else {
             if (ImGui::Button(label)) {
                 for (int i = 0; i < (int)m_OnlineSongs.size(); i++) {
                     if (!m_OnlineSongs[i].downloaded && !m_OnlineSongs[i].downloading) {
@@ -862,6 +936,9 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
                 }
             }
         }
+        // Total song count
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%d songs available)", (int)m_OnlineSongs.size());
     }
 
     // Status messages
@@ -880,12 +957,86 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
         return;
     }
 
-    // Filter
+    // Collect unique instruments and counts
+    std::map<std::string, int> onlineInstCounts;
+    for (const auto& song : m_OnlineSongs) {
+        std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+        onlineInstCounts[inst]++;
+    }
+    std::vector<std::string> onlineInstruments;
+    for (const auto& pair : onlineInstCounts) {
+        onlineInstruments.push_back(pair.first);
+    }
+
+    // Instrument tabs
+    if (ImGui::BeginTabBar("##OnlineInstrumentTabs")) {
+        char allLabel[64];
+        snprintf(allLabel, sizeof(allLabel), "All (%d)", (int)m_OnlineSongs.size());
+        if (ImGui::BeginTabItem(allLabel)) {
+            if (m_OnlineInstrumentTab != 0) {
+                m_OnlineInstrumentTab = 0;
+                m_OnlineArtistFilter = 0;
+            }
+            ImGui::EndTabItem();
+        }
+        for (int t = 0; t < (int)onlineInstruments.size(); t++) {
+            char tabLabel[64];
+            snprintf(tabLabel, sizeof(tabLabel), "%s (%d)", onlineInstruments[t].c_str(), onlineInstCounts[onlineInstruments[t]]);
+            if (ImGui::BeginTabItem(tabLabel)) {
+                if (m_OnlineInstrumentTab != t + 1) {
+                    m_OnlineInstrumentTab = t + 1;
+                    m_OnlineArtistFilter = 0;
+                }
+                ImGui::EndTabItem();
+            }
+        }
+        ImGui::EndTabBar();
+    }
+
+    // Determine selected instrument name
+    std::string selectedInstrument;
+    if (m_OnlineInstrumentTab > 0 && m_OnlineInstrumentTab <= (int)onlineInstruments.size()) {
+        selectedInstrument = onlineInstruments[m_OnlineInstrumentTab - 1];
+    }
+
+    // Collect unique artists for the current instrument tab
+    std::set<std::string> artistSet;
+    for (const auto& song : m_OnlineSongs) {
+        if (!selectedInstrument.empty()) {
+            std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+            if (inst != selectedInstrument) continue;
+        }
+        if (!song.author.empty()) artistSet.insert(song.author);
+    }
+    std::vector<std::string> artists(artistSet.begin(), artistSet.end());
+
+    // Artist dropdown + text filter on the same line
+    ImGui::SetNextItemWidth(160);
+    if (ImGui::BeginCombo("##ArtistFilter", m_OnlineArtistFilter == 0 ? "All Artists" :
+            (m_OnlineArtistFilter <= (int)artists.size() ? artists[m_OnlineArtistFilter - 1].c_str() : "All Artists"))) {
+        if (ImGui::Selectable("All Artists", m_OnlineArtistFilter == 0)) {
+            m_OnlineArtistFilter = 0;
+        }
+        for (int a = 0; a < (int)artists.size(); a++) {
+            bool sel = (m_OnlineArtistFilter == a + 1);
+            if (ImGui::Selectable(artists[a].c_str(), sel)) {
+                m_OnlineArtistFilter = a + 1;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
-    ImGui::InputTextWithHint("##OnlineFilter", "Filter...", m_OnlineFilter, sizeof(m_OnlineFilter));
+    ImGui::InputTextWithHint("##OnlineFilter", "Search...", m_OnlineFilter, sizeof(m_OnlineFilter));
 
     std::string filterStr(m_OnlineFilter);
     std::transform(filterStr.begin(), filterStr.end(), filterStr.begin(), ::tolower);
+
+    // Determine selected artist name
+    std::string selectedArtist;
+    if (m_OnlineArtistFilter > 0 && m_OnlineArtistFilter <= (int)artists.size()) {
+        selectedArtist = artists[m_OnlineArtistFilter - 1];
+    }
 
     // Song table
     if (ImGui::BeginTable("##OnlineTable", 5,
@@ -900,15 +1051,23 @@ void PlaylistEditor::RenderOnlinePane(MusicPlayer& player) {
         ImGui::TableHeadersRow();
 
         // Build filtered index list
+        auto toLower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+            return s;
+        };
         std::vector<int> filtered;
         for (int i = 0; i < (int)m_OnlineSongs.size(); i++) {
             const auto& song = m_OnlineSongs[i];
             if (!m_ShowDownloaded && song.downloaded) continue;
+            // Instrument tab filter
+            if (!selectedInstrument.empty()) {
+                std::string inst = song.instrument.empty() ? "Unknown" : song.instrument;
+                if (inst != selectedInstrument) continue;
+            }
+            // Artist filter
+            if (!selectedArtist.empty() && song.author != selectedArtist) continue;
+            // Text filter
             if (!filterStr.empty()) {
-                auto toLower = [](std::string s) {
-                    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-                    return s;
-                };
                 bool match = toLower(song.name).find(filterStr) != std::string::npos
                           || toLower(song.title).find(filterStr) != std::string::npos
                           || toLower(song.author).find(filterStr) != std::string::npos

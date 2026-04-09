@@ -16,9 +16,14 @@ If an LLM creating software upsets you, then perhaps this repo isn't for you. Mo
 ## Features
 
 - **Music Player** — play/pause, stop, next/previous, shuffle, repeat (off/all/one)
+- **Weighted Shuffle** — shuffle avoids recently played songs, prioritising unplayed tracks
 - **Playlist Editor** — dual-pane UI with song library and curated playlist
+- **Auto-scroll Playlist** — playlist scrolls to the current track on song change (pauses while hovering)
 - **Ornate Grand Piano** — tuned for piano playback with chord support and 3 octaves
-- **Track downloading** — download tracks from this repository's music directory from within game.
+- **Track downloading** — download tracks from this repository's music directory from within game
+- **Song Filters** — instrument tabs, artist dropdown, and text search in both the library and downloader
+- **Chat Announcements** — optionally announce the current song in game chat
+- **GW2-Themed UI** — dark slate and gold accent theme matching the game aesthetic
 
 ## Adding Songs
 

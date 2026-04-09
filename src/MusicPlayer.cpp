@@ -54,10 +54,12 @@ const Song* MusicPlayer::GetCurrentSong() const {
 }
 
 float MusicPlayer::GetPlaybackProgress() const {
-    const Song* song = GetCurrentSong();
-    if (!song || song->events.empty()) return 0.0f;
-    int cur = m_CurrentEvent.load();
-    return static_cast<float>(cur) / static_cast<float>(song->events.size());
+    float total = GetTotalSeconds();
+    if (total <= 0.0f) return 0.0f;
+    float p = GetElapsedSeconds() / total;
+    if (p < 0.0f) p = 0.0f;
+    if (p > 1.0f) p = 1.0f;
+    return p;
 }
 
 float MusicPlayer::GetElapsedSeconds() const {
@@ -144,6 +146,12 @@ void MusicPlayer::Stop() {
 
 void MusicPlayer::Next() {
     bool wasPlaying = IsPlaying();
+    // Record current track in shuffle history before skipping
+    if (m_Shuffle && m_CurrentTrack >= 0) {
+        m_ShuffleHistory.push_back(m_CurrentTrack);
+        int maxHist = std::max(2, std::min(50, (int)m_Playlist.size() / 2));
+        while ((int)m_ShuffleHistory.size() > maxHist) m_ShuffleHistory.pop_front();
+    }
     Stop();
     m_DirectPlayLibIdx = -1;
     m_CurrentTrack = ResolveNextTrack();
@@ -313,13 +321,41 @@ int MusicPlayer::ResolveNextTrack() const {
 
     if (m_Shuffle) {
         static std::mt19937 rng(std::random_device{}());
-        std::uniform_int_distribution<int> dist(0, (int)m_Playlist.size() - 1);
-        int next = dist(rng);
-        // Avoid same track if possible
-        if (m_Playlist.size() > 1) {
-            while (next == m_CurrentTrack) next = dist(rng);
+        int n = (int)m_Playlist.size();
+        if (n == 1) return 0;
+
+        // Build weights: songs not in history get weight 1.0,
+        // songs in history get lower weight based on recency
+        // (most recent = lowest weight)
+        std::vector<double> weights(n, 1.0);
+        int histSize = (int)m_ShuffleHistory.size();
+        for (int h = 0; h < histSize; h++) {
+            int idx = m_ShuffleHistory[h];
+            if (idx >= 0 && idx < n) {
+                // h=0 is oldest, h=histSize-1 is most recent
+                // Most recent gets near-zero weight, oldest in history gets partial weight
+                int recency = histSize - h; // 1 = oldest in history, histSize = most recent
+                double w = 1.0 / (1.0 + recency * 2.0);
+                if (weights[idx] > w) weights[idx] = w;
+            }
         }
-        return next;
+        // Current track gets zero weight
+        if (m_CurrentTrack >= 0 && m_CurrentTrack < n) {
+            weights[m_CurrentTrack] = 0.0;
+        }
+
+        // If all weights are zero (tiny playlist, all in history), reset to uniform
+        double totalWeight = 0.0;
+        for (double w : weights) totalWeight += w;
+        if (totalWeight <= 0.0) {
+            for (int i = 0; i < n; i++) weights[i] = (i == m_CurrentTrack) ? 0.0 : 1.0;
+            totalWeight = 0.0;
+            for (double w : weights) totalWeight += w;
+            if (totalWeight <= 0.0) return (m_CurrentTrack + 1) % n;
+        }
+
+        std::discrete_distribution<int> dist(weights.begin(), weights.end());
+        return dist(rng);
     }
 
     int next = m_CurrentTrack + 1;
@@ -347,6 +383,17 @@ int MusicPlayer::ResolvePrevTrack() const {
 
 void MusicPlayer::AdvanceTrack() {
     m_DirectPlayLibIdx = -1;  // Exit direct play on track advance
+
+    // Record current track in shuffle history before advancing
+    if (m_Shuffle && m_CurrentTrack >= 0) {
+        m_ShuffleHistory.push_back(m_CurrentTrack);
+        // Cap history at half the playlist size (min 2, max 50)
+        int maxHist = std::max(2, std::min(50, (int)m_Playlist.size() / 2));
+        while ((int)m_ShuffleHistory.size() > maxHist) {
+            m_ShuffleHistory.pop_front();
+        }
+    }
+
     int next = ResolveNextTrack();
     if (next < 0) {
         m_State.store(PlaybackState::Stopped);
@@ -358,6 +405,7 @@ void MusicPlayer::AdvanceTrack() {
     m_CurrentOctave = Octave::Mid;
     m_ElapsedBeforeLastPause = 0.0f;
     m_PlaybackStart = std::chrono::steady_clock::now();
+    AnnounceCurrentSong();
 }
 
 std::string VKToDisplayName(WORD vk) {
@@ -514,6 +562,9 @@ void MusicPlayer::SendOctaveChange(Octave target) {
 }
 
 void MusicPlayer::PlaybackThread() {
+    // Announce song in chat before playing
+    AnnounceCurrentSong();
+
     // Absolute timing: we track when each event SHOULD fire based on
     // accumulated beat durations, preventing drift from key-send delays
     // and octave-change overhead.
@@ -915,6 +966,113 @@ void MusicPlayer::LoadPlaylist(const std::string& filepath) {
     }
 }
 
+static LPARAM MakeLParam(uint32_t vk, bool down) {
+    int64_t lp = !down;        // transition state
+    lp = lp << 1;
+    lp += !down;               // previous key state
+    lp = lp << 1;
+    lp += 0;                   // context code
+    lp = lp << 1;
+    lp = lp << 4;
+    lp = lp << 1;
+    lp = lp << 8;
+    lp += MapVirtualKeyA(vk, MAPVK_VK_TO_VSC);
+    lp = lp << 16;
+    lp += 1;
+    return (LPARAM)lp;
+}
+
+static bool CopyToOsClipboard(HWND hwnd, const std::string& utf8) {
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), NULL, 0);
+    if (wlen <= 0) return false;
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, sizeof(WCHAR) * (wlen + 1));
+    if (!hMem) return false;
+    WCHAR* wBuf = (WCHAR*)GlobalLock(hMem);
+    if (!wBuf) { GlobalFree(hMem); return false; }
+    MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), wBuf, wlen);
+    wBuf[wlen] = L'\0';
+    GlobalUnlock(hMem);
+    if (!OpenClipboard(hwnd)) { GlobalFree(hMem); return false; }
+    EmptyClipboard();
+    SetClipboardData(CF_UNICODETEXT, hMem);
+    CloseClipboard();
+    return true;
+}
+
+void MusicPlayer::SendChatMessage(const std::string& message) {
+    if (!m_GameWindow || message.empty()) return;
+    DebugLog("Chat announce: " + message);
+
+    const int delayMs = 50;
+
+    if (!CopyToOsClipboard(m_GameWindow, message)) return;
+
+    // Open chat with Enter
+    SendMessage(m_GameWindow, WM_KEYDOWN, VK_RETURN, MakeLParam(VK_RETURN, true));
+    SendMessage(m_GameWindow, WM_KEYUP, VK_RETURN, MakeLParam(VK_RETURN, false));
+    Sleep(delayMs);
+
+    // Ctrl+V to paste
+    INPUT ctrlDown = {};
+    ctrlDown.type = INPUT_KEYBOARD;
+    ctrlDown.ki.wVk = VK_CONTROL;
+    ctrlDown.ki.wScan = (WORD)MapVirtualKeyA(VK_CONTROL, MAPVK_VK_TO_VSC);
+    SendInput(1, &ctrlDown, sizeof(INPUT));
+    Sleep(delayMs);
+
+    SendMessage(m_GameWindow, WM_KEYDOWN, 'V', MakeLParam('V', true));
+    SendMessage(m_GameWindow, WM_KEYUP, 'V', MakeLParam('V', false));
+    Sleep(delayMs);
+
+    INPUT ctrlUp = {};
+    ctrlUp.type = INPUT_KEYBOARD;
+    ctrlUp.ki.wVk = VK_CONTROL;
+    ctrlUp.ki.wScan = (WORD)MapVirtualKeyA(VK_CONTROL, MAPVK_VK_TO_VSC);
+    ctrlUp.ki.dwFlags = KEYEVENTF_KEYUP;
+    SendInput(1, &ctrlUp, sizeof(INPUT));
+    Sleep(delayMs);
+
+    // Enter to send
+    SendMessage(m_GameWindow, WM_KEYDOWN, VK_RETURN, MakeLParam(VK_RETURN, true));
+    SendMessage(m_GameWindow, WM_KEYUP, VK_RETURN, MakeLParam(VK_RETURN, false));
+    Sleep(delayMs);
+}
+
+void MusicPlayer::AnnounceCurrentSong() {
+    if (!m_AnnounceEnabled) return;
+
+    const Song* song = GetCurrentSong();
+    if (!song) return;
+
+    // Format the length string as (M:SS)
+    float totalSec = song->GetTotalDurationSeconds();
+    int mins = (int)totalSec / 60;
+    int secs = (int)totalSec % 60;
+    char lengthBuf[16];
+    snprintf(lengthBuf, sizeof(lengthBuf), "(%d:%02d)", mins, secs);
+
+    // Build message from format string
+    std::string msg = m_AnnounceFormat;
+    // Replace %s with title
+    for (size_t pos = msg.find("%s"); pos != std::string::npos; pos = msg.find("%s", pos)) {
+        msg.replace(pos, 2, song->title);
+        pos += song->title.size();
+    }
+    // Replace %a with author
+    for (size_t pos = msg.find("%a"); pos != std::string::npos; pos = msg.find("%a", pos)) {
+        msg.replace(pos, 2, song->author);
+        pos += song->author.size();
+    }
+    // Replace %l with length
+    std::string lenStr(lengthBuf);
+    for (size_t pos = msg.find("%l"); pos != std::string::npos; pos = msg.find("%l", pos)) {
+        msg.replace(pos, 2, lenStr);
+        pos += lenStr.size();
+    }
+
+    SendChatMessage(msg);
+}
+
 void MusicPlayer::SaveKeyConfig(const std::string& filepath) const {
     std::ofstream file(filepath);
     if (!file.is_open()) return;
@@ -926,6 +1084,8 @@ void MusicPlayer::SaveKeyConfig(const std::string& filepath) const {
     }
     file << "octave_up=" << m_KeyConfig.octaveUpKey << "\n";
     file << "octave_down=" << m_KeyConfig.octaveDownKey << "\n";
+    file << "announce_enabled=" << (m_AnnounceEnabled ? 1 : 0) << "\n";
+    file << "announce_format=" << m_AnnounceFormat << "\n";
 }
 
 void MusicPlayer::LoadKeyConfig(const std::string& filepath) {
@@ -937,8 +1097,17 @@ void MusicPlayer::LoadKeyConfig(const std::string& filepath) {
         auto eq = line.find('=');
         if (eq == std::string::npos) continue;
         std::string key = line.substr(0, eq);
+        std::string valStr = line.substr(eq + 1);
+
+        // String-valued keys
+        if (key == "announce_format") {
+            m_AnnounceFormat = valStr;
+            continue;
+        }
+
+        // Numeric keys
         int val = 0;
-        try { val = std::stoi(line.substr(eq + 1)); } catch (...) { continue; }
+        try { val = std::stoi(valStr); } catch (...) { continue; }
 
         if (key.substr(0, 4) == "note" && key.size() == 5) {
             int idx = key[4] - '1';
@@ -950,6 +1119,8 @@ void MusicPlayer::LoadKeyConfig(const std::string& filepath) {
             m_KeyConfig.octaveUpKey = (WORD)val;
         } else if (key == "octave_down") {
             m_KeyConfig.octaveDownKey = (WORD)val;
+        } else if (key == "announce_enabled") {
+            m_AnnounceEnabled = (val != 0);
         }
     }
 }
