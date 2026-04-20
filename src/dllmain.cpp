@@ -10,12 +10,13 @@
 #include "SongParser.h"
 #include "PlaylistEditor.h"
 #include <shellapi.h>
+#include <timeapi.h>
 
 // Version constants
 #define V_MAJOR 0
 #define V_MINOR 9
 #define V_BUILD 3
-#define V_REVISION 1
+#define V_REVISION 2
 
 // Quick Access icon identifiers
 #define QA_ID "QA_SERENADE"
@@ -290,6 +291,9 @@ void AddonLoad(AddonAPI_t* aApi) {
 
     BuildGW2Theme();
 
+    // Request 1ms timer resolution for accurate playback Sleep() calls
+    timeBeginPeriod(1);
+
     // Set up directories
     const char* addonDir = APIDefs->Paths_GetAddonDirectory("Serenade");
     if (addonDir) {
@@ -354,6 +358,9 @@ void AddonLoad(AddonAPI_t* aApi) {
 }
 
 void AddonUnload() {
+    // Release 1ms timer resolution
+    timeEndPeriod(1);
+
     // Stop playback
     g_Player.Stop();
 

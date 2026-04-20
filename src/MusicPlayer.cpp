@@ -109,6 +109,7 @@ void MusicPlayer::Play() {
         m_ThreadStop.store(false);
         m_ThreadRunning.store(true);
         m_Thread = std::thread(&MusicPlayer::PlaybackThread, this);
+        SetThreadPriority((HANDLE)m_Thread.native_handle(), THREAD_PRIORITY_ABOVE_NORMAL);
         return;
     }
 
