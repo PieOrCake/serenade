@@ -4,7 +4,7 @@
 
 Serenade is a Guild Wars 2 addon for the [Raidcore Nexus](https://raidcore.gg/Nexus) platform. It automates in-game instrument playback by reading song files and simulating keyboard input. It builds as a Windows DLL (`Serenade.dll`) cross-compiled from Linux using MinGW.
 
-**Current version:** 0.9.3.2
+**Current version:** 0.9.4.0
 
 ## Architecture
 
@@ -35,6 +35,15 @@ Build is pre-configured. Only `make` is needed for day-to-day work. Cross-compil
 - Time-based seek bar, auto-scroll playlist
 - GW2-themed ImGui style (dark slate + gold)
 - Quick Access button in Nexus toolbar
+- Drum Kit support — drum songs skip the octave reset and inter-song gap at playback start
+
+## Drum support
+
+GW2 added a Drum Kit instrument. Songs with `instrument: Drums` in their metadata header skip the octave reset sequence (which presses keys 9×5 and 0×1) and the 3-second inter-song gap, since drums have no octave system. Detection is a case-sensitive string match on `song->instrument == "Drums"` in `src/player/Playback.cpp`.
+
+## Instrument filter tabs
+
+The library pane and downloader pane both have instrument filter tabs (All / Drums / Piano / etc.). There was a bug where the tab clicks didn't actually filter — fixed by introducing a local `artistListRebuilt` flag to correctly signal the filtered list as dirty. The bug was in `src/ui/LibraryPane.cpp` and `src/ui/DownloaderPane.cpp`.
 
 ## QA icon
 
@@ -79,19 +88,13 @@ with open('src/icons.h', 'w') as f:
 EOF
 ```
 
-## Uncommitted changes
-
-A large refactor is staged but not yet committed — `MusicPlayer.cpp`, `SongParser.cpp`, `dllmain.cpp`, `CMakeLists.txt`, `MusicPlayer.h`, `PlaylistEditor.h` have all been significantly reorganised (code moved into the `src/player/`, `src/ui/`, `src/parsers/` subdirectories). New files include `src/Addon.h`, `src/icons.h`, and all the split source files. This work is complete and building cleanly but has not been committed or tagged.
-
 ## Song library
 
-Songs live in `music/` as `.ahk` files. `music/index.json` is the metadata index — regenerate with:
+Songs live in `music/` as `.ahk` files. `music/index.json` is the metadata index — always regenerate and commit it when songs are added, removed, or renamed:
 ```bash
 bash generate_song_index.sh
 ```
 
 ## What's left to do
 
-- Commit the refactor (the large staged diff)
-- Bump version and tag a release once the refactor commit is in
 - No known bugs at time of handover
