@@ -36,3 +36,4 @@ tools/patch-remove.sh
 /*.mid
 
 # Runtime directories (music/ is tracked for online song distribution)
+handover.md
