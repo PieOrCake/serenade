@@ -6,6 +6,8 @@
 #include <vector>
 #include <map>
 #include <functional>
+#include <atomic>
+#include <mutex>
 #include "MusicPlayer.h"
 
 namespace Serenade {
@@ -21,6 +23,7 @@ struct OnlineSong {
     int size = 0;             // file size in bytes
     bool downloaded = false;  // already exists locally
     bool downloading = false; // currently downloading
+    std::string downloadError;
 };
 
 class PlaylistEditor {
@@ -68,9 +71,11 @@ private:
     // Online songs state
     std::string m_SongsDirectory;
     std::vector<OnlineSong> m_OnlineSongs;
-    bool m_OnlineFetching = false;
+    std::atomic<bool> m_OnlineFetching{false};
+    std::atomic<bool> m_PendingRefresh{false};
     bool m_OnlineFetched = false;
     std::string m_OnlineError;
+    std::mutex m_OnlineMutex;
     char m_OnlineFilter[128] = "";
     bool m_ShowOnlinePane = false;
     bool m_ShowDownloaded = true;     // "show music I already have" checkbox

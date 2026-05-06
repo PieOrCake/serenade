@@ -4,7 +4,7 @@ A Guild Wars 2 addon for [Raidcore Nexus](https://raidcore.gg/Nexus) that automa
 
 ## AI Notice
 
-This addon has been 100% created in [Windsurf](https://windsurf.com/) using Claude. I understand that some folks have a moral, financial or political objection to creating software using an LLM. I just wanted to make a useful tool for the GW2 community, and this was the only way I could do it.
+This addon has been largely created using Claude. I understand that some folks have a moral, financial or political objection to creating software using an LLM. I just wanted to make a useful tool for the GW2 community, and this was the only way I could do it.
 
 If an LLM creating software upsets you, then perhaps this repo isn't for you. Move on, and enjoy your day.
 
@@ -87,7 +87,7 @@ Produces `build/Serenade.dll`.
 
 ## Usage
 
-1. Equip the **Ornate Grand Piano** or **Drum Kit** in-game
+1. Equip the **Ornate Grand Piano** or **Drum Kit** in-game (Other instruments will also likely work fine)
 2. Click the music note icon in the Nexus toolbar (or press `Ctrl+Shift+M`)
 3. Open the Playlist Editor to add songs from the library
 4. Use the download button to download songs from this repository's music directory

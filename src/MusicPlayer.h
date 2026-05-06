@@ -5,6 +5,7 @@
 #include <vector>
 #include <deque>
 #include <cstdint>
+#include <fstream>
 #include <mutex>
 #include <atomic>
 #include <thread>
@@ -64,6 +65,8 @@ public:
     void Play();
     void Pause();
     void Stop();
+    void StopAfterCurrent();
+    bool IsStopAfterCurrentPending() const { return m_StopAfterCurrent.load(); }
     void Next();
     void Previous();
     void SeekTo(float progress);  // Seek to position (0.0-1.0)
@@ -136,6 +139,10 @@ public:
     void SetAnnounceFormat(const std::string& fmt) { m_AnnounceFormat = fmt; }
     const std::string& GetAnnounceFormat() const { return m_AnnounceFormat; }
 
+    // Quick Access icon visibility
+    void SetQAEnabled(bool enabled) { m_QAEnabled = enabled; }
+    bool GetQAEnabled() const { return m_QAEnabled; }
+
     // WndProc handle for sending keys
     void SetGameWindow(HWND hwnd) { m_GameWindow = hwnd; }
 
@@ -190,6 +197,7 @@ private:
     std::thread m_Thread;
     std::atomic<bool> m_ThreadRunning{false};
     std::atomic<bool> m_ThreadStop{false};
+    std::atomic<bool> m_StopAfterCurrent{false};
     std::mutex m_Mutex;
 
     // Shuffle history (recently played playlist indices, most recent at back)
@@ -202,8 +210,12 @@ private:
     bool m_AnnounceEnabled = false;
     std::string m_AnnounceFormat = "Now serenading: %s by %a %l";
 
-    // Debug log (file-based)
+    // Settings
+    bool m_QAEnabled = true;
+
+    // Debug log (file kept open for session to avoid per-note open/close overhead)
     std::string m_DebugLogPath;
+    std::ofstream m_DebugFile;
     std::mutex m_DebugMutex;
 };
 

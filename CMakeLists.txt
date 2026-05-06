@@ -26,6 +26,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 include_directories(${CMAKE_SOURCE_DIR}/lib/imgui)
 include_directories(${CMAKE_SOURCE_DIR}/lib/imgui/backends)
+include_directories(${CMAKE_SOURCE_DIR}/src)
 
 # ImGui source files
 set(IMGUI_SOURCES
@@ -37,19 +38,40 @@ set(IMGUI_SOURCES
 
 # Source files
 set(SOURCES
+    # Addon lifecycle
     src/dllmain.cpp
-    src/MusicPlayer.cpp
-    src/SongParser.cpp
-    src/PlaylistEditor.cpp
+
+    # UI layer
+    src/ui/GW2Theme.cpp
+    src/ui/PlayerWindow.cpp
+    src/ui/OptionsPanel.cpp
+    src/ui/PlaylistEditor.cpp
+    src/ui/LibraryPane.cpp
+    src/ui/PlaylistPane.cpp
+    src/ui/DownloaderPane.cpp
+
+    # Playback engine
+    src/player/Playback.cpp
+    src/player/Navigation.cpp
+    src/player/Library.cpp
+
+    # Song parsers
+    src/parsers/AHKParser.cpp
+    src/parsers/NotationParser.cpp
+    src/parsers/SongFiles.cpp
+
     ${IMGUI_SOURCES}
 )
 
 # Header files
 set(HEADERS
     include/nexus/Nexus.h
+    src/Addon.h
+    src/icons.h
     src/MusicPlayer.h
     src/SongParser.h
     src/PlaylistEditor.h
+    src/ui/GW2Theme.h
 )
 
 # Create shared library (DLL)
