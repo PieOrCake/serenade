@@ -69,6 +69,8 @@ Songs live in `music/` as `.ahk` files with metadata comment headers. `music/ind
 bash generate_song_index.sh
 ```
 
+Always regenerate and commit `music/index.json` whenever songs are added, removed, or renamed in `music/`.
+
 ## Converter Tool (separate)
 
 `tools/midi2ahk.py` is a standalone PyQt6 GUI tool for converting MIDI files to the AHK song format. It has its own CI workflow (`.github/workflows/build-converter.yml`) and is independent of the DLL build.
