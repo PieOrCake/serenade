@@ -1,6 +1,6 @@
 # Serenade
 
-A Guild Wars 2 addon for [Raidcore Nexus](https://raidcore.gg/Nexus) that automates in-game instrument playback. Only the Ornate Grand Piano has been tested, but it should work for other instruments if you acquire songs designed for them.
+A Guild Wars 2 addon for [Raidcore Nexus](https://raidcore.gg/Nexus) that automates in-game instrument playback. Supports the Ornate Grand Piano and the Drum Kit, with song files available for both.
 
 ## AI Notice
 
@@ -20,6 +20,7 @@ If an LLM creating software upsets you, then perhaps this repo isn't for you. Mo
 - **Playlist Editor** — dual-pane UI with song library and curated playlist
 - **Auto-scroll Playlist** — playlist scrolls to the current track on song change (pauses while hovering)
 - **Ornate Grand Piano** — tuned for piano playback with chord support and 3 octaves
+- **Drum Kit** — drum songs start instantly with no octave reset delay
 - **Track downloading** — download tracks from this repository's music directory from within game
 - **Song Filters** — instrument tabs, artist dropdown, and text search in both the library and downloader
 - **Chat Announcements** — optionally announce the current song in game chat
@@ -86,7 +87,7 @@ Produces `build/Serenade.dll`.
 
 ## Usage
 
-1. Equip the **Ornate Grand Piano** in-game
+1. Equip the **Ornate Grand Piano** or **Drum Kit** in-game
 2. Click the music note icon in the Nexus toolbar (or press `Ctrl+Shift+M`)
 3. Open the Playlist Editor to add songs from the library
 4. Use the download button to download songs from this repository's music directory
