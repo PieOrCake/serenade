@@ -276,6 +276,7 @@ void MusicPlayer::SaveKeyConfig(const std::string& filepath) const {
     file << "octave_down="       << m_KeyConfig.octaveDownKey << "\n";
     file << "announce_enabled="  << (m_AnnounceEnabled ? 1 : 0) << "\n";
     file << "announce_format="   << m_AnnounceFormat << "\n";
+    file << "announce_channel="  << static_cast<int>(m_AnnounceChannel) << "\n";
     file << "qa_enabled="        << (m_QAEnabled ? 1 : 0) << "\n";
 }
 
@@ -307,6 +308,9 @@ void MusicPlayer::LoadKeyConfig(const std::string& filepath) {
             m_KeyConfig.octaveDownKey = (WORD)val;
         } else if (key == "announce_enabled") {
             m_AnnounceEnabled = (val != 0);
+        } else if (key == "announce_channel") {
+            if (val >= 0 && val <= static_cast<int>(AnnounceChannel::Guild6))
+                m_AnnounceChannel = static_cast<AnnounceChannel>(val);
         } else if (key == "qa_enabled") {
             m_QAEnabled = (val != 0);
         }
