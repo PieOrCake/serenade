@@ -86,6 +86,7 @@ void AddonLoad(AddonAPI_t* aApi) {
                                  (void(*)(void*, void*))APIDefs->ImguiFree);
 
     BuildGW2Theme();
+    g_Player.SetMumbleLink((Mumble::Data*)APIDefs->DataLink_Get(DL_MUMBLE_LINK));
     timeBeginPeriod(1);
 
     const char* addonDir = APIDefs->Paths_GetAddonDirectory("Serenade");
@@ -139,6 +140,7 @@ void AddonLoad(AddonAPI_t* aApi) {
 
 void AddonUnload() {
     timeEndPeriod(1);
+    g_Player.SetUnloading();
     g_Player.Stop();
 
     if (!g_PlaylistPath.empty()) g_Player.SavePlaylist(g_PlaylistPath);
