@@ -13,6 +13,7 @@
 #include <functional>
 #include <windows.h>
 #include "SongParser.h"
+#include "mumble/Mumble.h"
 
 namespace Serenade {
 
@@ -26,6 +27,20 @@ enum class RepeatMode {
     Off,
     All,
     One
+};
+
+enum class AnnounceChannel {
+    Active = 0,  // post to whichever channel is currently active — no prefix
+    Say,
+    Party,
+    Squad,
+    Map,
+    Guild1,
+    Guild2,
+    Guild3,
+    Guild4,
+    Guild5,
+    Guild6,
 };
 
 // Key configuration for instrument playback
@@ -138,6 +153,12 @@ public:
     bool GetAnnounceEnabled() const { return m_AnnounceEnabled; }
     void SetAnnounceFormat(const std::string& fmt) { m_AnnounceFormat = fmt; }
     const std::string& GetAnnounceFormat() const { return m_AnnounceFormat; }
+    void SetAnnounceChannel(AnnounceChannel ch) { m_AnnounceChannel = ch; }
+    AnnounceChannel GetAnnounceChannel() const  { return m_AnnounceChannel; }
+
+    void SetMumbleLink(Mumble::Data* ml) { m_MumbleLink = ml; }
+
+    void SetUnloading() { m_Unloading = true; }
 
     // Quick Access icon visibility
     void SetQAEnabled(bool enabled) { m_QAEnabled = enabled; }
@@ -209,6 +230,13 @@ private:
     // Chat announcement
     bool m_AnnounceEnabled = false;
     std::string m_AnnounceFormat = "Now serenading: %s by %a %l";
+    AnnounceChannel m_AnnounceChannel = AnnounceChannel::Active;
+
+    // MumbleLink state
+    Mumble::Data* m_MumbleLink = nullptr;
+
+    // Abort flag for AddonUnload
+    std::atomic<bool> m_Unloading{false};
 
     // Settings
     bool m_QAEnabled = true;
