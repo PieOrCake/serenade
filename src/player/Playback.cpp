@@ -128,39 +128,77 @@ static bool CopyToOsClipboard(HWND hwnd, const std::string& utf8) {
     return true;
 }
 
+static const char* ChannelPrefix(AnnounceChannel ch) {
+    switch (ch) {
+        case AnnounceChannel::Say:    return "/say ";
+        case AnnounceChannel::Party:  return "/party ";
+        case AnnounceChannel::Squad:  return "/squad ";
+        case AnnounceChannel::Map:    return "/map ";
+        case AnnounceChannel::Guild1: return "/g1 ";
+        case AnnounceChannel::Guild2: return "/g2 ";
+        case AnnounceChannel::Guild3: return "/g3 ";
+        case AnnounceChannel::Guild4: return "/g4 ";
+        case AnnounceChannel::Guild5: return "/g5 ";
+        case AnnounceChannel::Guild6: return "/g6 ";
+        default:                      return "";
+    }
+}
+
 void MusicPlayer::SendChatMessage(const std::string& message) {
-    if (!m_GameWindow || message.empty()) return;
+    if (message.empty() || m_Unloading) return;
     DebugLog("Chat announce: " + message);
 
-    const int delayMs = 50;
-    if (!CopyToOsClipboard(m_GameWindow, message)) return;
+    HWND game = m_GameWindow;
+    if (!game) {
+        game = FindWindowA("ArenaNet_Dx_Window_Class", nullptr);
+        if (!game) game = FindWindowA("ArenaNet_Gr_Window_Class", nullptr);
+        if (!game) return;
+        m_GameWindow = game;
+    }
 
-    SendMessage(m_GameWindow, WM_KEYDOWN, VK_RETURN, MakeLParam(VK_RETURN, true));
-    SendMessage(m_GameWindow, WM_KEYUP,   VK_RETURN, MakeLParam(VK_RETURN, false));
-    Sleep(delayMs);
+    if (!CopyToOsClipboard(game, message)) return;
 
-    INPUT ctrlDown = {};
-    ctrlDown.type      = INPUT_KEYBOARD;
-    ctrlDown.ki.wVk    = VK_CONTROL;
-    ctrlDown.ki.wScan  = (WORD)MapVirtualKeyA(VK_CONTROL, MAPVK_VK_TO_VSC);
+    constexpr int kDelay = 50;
+
+    bool focused = m_MumbleLink && m_MumbleLink->Context.IsTextboxFocused;
+    if (!focused) {
+        SendMessage(game, WM_KEYDOWN, VK_RETURN, MakeLParam(VK_RETURN, true));
+        SendMessage(game, WM_KEYUP,   VK_RETURN, MakeLParam(VK_RETURN, false));
+        Sleep(kDelay);
+    }
+
+    if (m_Unloading) return;
+
+    INPUT ctrlDown{};
+    ctrlDown.type     = INPUT_KEYBOARD;
+    ctrlDown.ki.wVk   = VK_CONTROL;
+    ctrlDown.ki.wScan = (WORD)MapVirtualKeyA(VK_CONTROL, MAPVK_VK_TO_VSC);
+
+    INPUT ctrlUp{};
+    ctrlUp.type       = INPUT_KEYBOARD;
+    ctrlUp.ki.wVk     = VK_CONTROL;
+    ctrlUp.ki.wScan   = (WORD)MapVirtualKeyA(VK_CONTROL, MAPVK_VK_TO_VSC);
+    ctrlUp.ki.dwFlags = KEYEVENTF_KEYUP;
+
     SendInput(1, &ctrlDown, sizeof(INPUT));
-    Sleep(delayMs);
+    Sleep(kDelay);
 
-    SendMessage(m_GameWindow, WM_KEYDOWN, 'V', MakeLParam('V', true));
-    SendMessage(m_GameWindow, WM_KEYUP,   'V', MakeLParam('V', false));
-    Sleep(delayMs);
+    if (m_Unloading) {
+        SendInput(1, &ctrlUp, sizeof(INPUT));
+        return;
+    }
 
-    INPUT ctrlUp = {};
-    ctrlUp.type         = INPUT_KEYBOARD;
-    ctrlUp.ki.wVk       = VK_CONTROL;
-    ctrlUp.ki.wScan     = (WORD)MapVirtualKeyA(VK_CONTROL, MAPVK_VK_TO_VSC);
-    ctrlUp.ki.dwFlags   = KEYEVENTF_KEYUP;
+    SendMessage(game, WM_KEYDOWN, 'V', MakeLParam('V', true));
+    SendMessage(game, WM_KEYUP,   'V', MakeLParam('V', false));
+    Sleep(kDelay);
+
     SendInput(1, &ctrlUp, sizeof(INPUT));
-    Sleep(delayMs);
+    Sleep(kDelay);
 
-    SendMessage(m_GameWindow, WM_KEYDOWN, VK_RETURN, MakeLParam(VK_RETURN, true));
-    SendMessage(m_GameWindow, WM_KEYUP,   VK_RETURN, MakeLParam(VK_RETURN, false));
-    Sleep(delayMs);
+    if (m_Unloading) return;
+
+    SendMessage(game, WM_KEYDOWN, VK_RETURN, MakeLParam(VK_RETURN, true));
+    SendMessage(game, WM_KEYUP,   VK_RETURN, MakeLParam(VK_RETURN, false));
 }
 
 void MusicPlayer::AnnounceCurrentSong() {
@@ -190,7 +228,7 @@ void MusicPlayer::AnnounceCurrentSong() {
         pos += lenStr.size();
     }
 
-    SendChatMessage(msg);
+    SendChatMessage(std::string(ChannelPrefix(m_AnnounceChannel)) + msg);
 }
 
 void MusicPlayer::PlaybackThread() {
