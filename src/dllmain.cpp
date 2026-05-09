@@ -14,7 +14,7 @@
 #define V_MAJOR    0
 #define V_MINOR    9
 #define V_BUILD    4
-#define V_REVISION 0
+#define V_REVISION 1
 
 #define QA_ID           "QA_SERENADE"
 #define TEX_ICON        "TEX_SERENADE_ICON"

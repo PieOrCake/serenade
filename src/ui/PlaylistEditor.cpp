@@ -15,12 +15,11 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
 
     if (!m_Visible) return false;
 
-    PushGW2Theme();
+    ThemeGuard themeGuard;
 
     ImGui::SetNextWindowSize(ImVec2(700, 500), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Serenade - Playlist Editor", &m_Visible, ImGuiWindowFlags_NoCollapse)) {
         ImGui::End();
-        PopGW2Theme();
         return m_Visible;
     }
 
@@ -176,7 +175,6 @@ bool PlaylistEditor::Render(MusicPlayer& player) {
     }
 
     ImGui::End();
-    PopGW2Theme();
     return m_Visible;
 }
 

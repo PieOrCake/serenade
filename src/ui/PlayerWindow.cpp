@@ -173,14 +173,13 @@ void AddonRender() {
     }
     g_WasWindowVisible = true;
 
-    PushGW2Theme();
+    ThemeGuard themeGuard;
 
     ImGui::SetNextWindowSize(ImVec2(340, 235), ImGuiCond_FirstUseEver);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar;
 
     if (!ImGui::Begin("Serenade", &g_PlayerWindowVisible, flags)) {
         ImGui::End();
-        PopGW2Theme();
         g_PlaylistEditor.Render(g_Player);
         return;
     }
@@ -540,7 +539,6 @@ void AddonRender() {
     }
 
     ImGui::End();
-    PopGW2Theme();
 
     g_PlaylistEditor.Render(g_Player);
 }
