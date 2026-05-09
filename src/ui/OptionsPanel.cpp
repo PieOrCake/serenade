@@ -52,6 +52,23 @@ void AddonOptions() {
                 if (!g_KeyConfigPath.empty()) g_Player.SaveKeyConfig(g_KeyConfigPath);
             }
             ImGui::TextDisabled("%%s = title, %%a = artist, %%l = length");
+
+            ImGui::Spacing();
+            ImGui::TextDisabled("Chat Channel");
+
+            static const char* kChannelNames[] = {
+                "Currently Active Channel",
+                "Say", "Party", "Squad", "Map",
+                "Guild 1", "Guild 2", "Guild 3", "Guild 4", "Guild 5", "Guild 6"
+            };
+            int ch = static_cast<int>(g_Player.GetAnnounceChannel());
+            ImGui::SetNextItemWidth(220);
+            if (ImGui::Combo("##announce_channel", &ch, kChannelNames, IM_ARRAYSIZE(kChannelNames))) {
+                g_Player.SetAnnounceChannel(static_cast<Serenade::AnnounceChannel>(ch));
+                if (!g_KeyConfigPath.empty()) g_Player.SaveKeyConfig(g_KeyConfigPath);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Which chat channel to post the Now Playing message to");
         }
     }
 
