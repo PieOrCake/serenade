@@ -281,6 +281,10 @@ void MusicPlayer::PlaybackThread() {
     }
     double pauseOffset = 0.0;
 
+    auto inCombat = [&]() -> bool {
+        return m_MumbleLink && m_MumbleLink->Context.IsInCombat;
+    };
+
     auto waitUntil = [&](double targetMs) -> bool {
         auto targetTime = timelineStart + std::chrono::microseconds(
             static_cast<long long>((targetMs + pauseOffset) * 1000.0));
@@ -297,6 +301,11 @@ void MusicPlayer::PlaybackThread() {
                         Pause();
                         return false;
                     }
+                    if (inCombat()) {
+                        DebugLog("Combat detected — stopping playback");
+                        Stop();
+                        return false;
+                    }
                     int chunk = std::min(10, sleepMs - slept);
                     Sleep(chunk);
                     slept += chunk;
@@ -306,6 +315,11 @@ void MusicPlayer::PlaybackThread() {
                 if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
                     DebugLog("Enter key detected — pausing playback (chat protection)");
                     Pause();
+                    return false;
+                }
+                if (inCombat()) {
+                    DebugLog("Combat detected — stopping playback");
+                    Stop();
                     return false;
                 }
                 if (std::chrono::steady_clock::now() >= targetTime) break;
@@ -416,6 +430,11 @@ void MusicPlayer::PlaybackThread() {
                             Pause();
                             break;
                         }
+                        if (inCombat()) {
+                            DebugLog("Combat detected — stopping playback");
+                            Stop();
+                            break;
+                        }
                         Sleep(10);
                     }
                 }
@@ -437,6 +456,11 @@ void MusicPlayer::PlaybackThread() {
             if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
                 DebugLog("Enter key detected — pausing playback (chat protection)");
                 Pause();
+                break;
+            }
+            if (inCombat()) {
+                DebugLog("Combat detected — stopping playback");
+                Stop();
                 break;
             }
             executeEvent(song->events[eventIdx], eventIdx);

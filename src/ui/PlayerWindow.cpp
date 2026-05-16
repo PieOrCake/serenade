@@ -175,11 +175,15 @@ void AddonRender() {
 
     ThemeGuard themeGuard;
 
+    bool fontPushed = g_NexusLink && g_NexusLink->FontUI;
+    if (fontPushed) ImGui::PushFont((ImFont*)g_NexusLink->FontUI);
+
     ImGui::SetNextWindowSize(ImVec2(340, 235), ImGuiCond_FirstUseEver);
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar;
 
     if (!ImGui::Begin("Serenade", &g_PlayerWindowVisible, flags)) {
         ImGui::End();
+        if (fontPushed) ImGui::PopFont();
         g_PlaylistEditor.Render(g_Player);
         return;
     }
@@ -201,23 +205,23 @@ void AddonRender() {
     }
 
     // ── Row 1: Song title (large font, scrolling if too wide) ──
-    bool hasTitleFont = (g_TitleFont != nullptr && g_TitleFont->IsLoaded());
+    ImFont* titleFont = (g_NexusLink && g_NexusLink->FontBig) ? (ImFont*)g_NexusLink->FontBig : nullptr;
     float normalLineH = ImGui::GetTextLineHeightWithSpacing();
     float scaledLineH;
 
-    if (hasTitleFont) {
-        ImGui::PushFont(g_TitleFont);
+    if (titleFont) {
+        ImGui::PushFont(titleFont);
         scaledLineH = ImGui::GetTextLineHeightWithSpacing();
         ImGui::PopFont();
     } else {
-        scaledLineH = normalLineH * 2.0f;
+        scaledLineH = normalLineH;
     }
 
     float infoHeight = scaledLineH + normalLineH;
     ImVec2 infoStart = ImGui::GetCursorPos();
 
-    #define PUSH_TITLE_FONT() do { if (hasTitleFont) ImGui::PushFont(g_TitleFont); else ImGui::SetWindowFontScale(2.0f); } while(0)
-    #define POP_TITLE_FONT()  do { if (hasTitleFont) ImGui::PopFont(); else ImGui::SetWindowFontScale(1.0f); } while(0)
+    #define PUSH_TITLE_FONT() do { if (titleFont) ImGui::PushFont(titleFont); } while(0)
+    #define POP_TITLE_FONT()  do { if (titleFont) ImGui::PopFont(); } while(0)
 
     const Serenade::Song* song = g_Player.GetCurrentSong();
 
@@ -539,6 +543,7 @@ void AddonRender() {
     }
 
     ImGui::End();
+    if (fontPushed) ImGui::PopFont();
 
     g_PlaylistEditor.Render(g_Player);
 }

@@ -14,7 +14,7 @@
 #define V_MAJOR    0
 #define V_MINOR    9
 #define V_BUILD    4
-#define V_REVISION 1
+#define V_REVISION 2
 
 #define QA_ID           "QA_SERENADE"
 #define TEX_ICON        "TEX_SERENADE_ICON"
@@ -25,7 +25,7 @@ HMODULE          hSelf;
 AddonDefinition_t AddonDef{};
 AddonAPI_t*      APIDefs            = nullptr;
 bool             g_PlayerWindowVisible = false;
-ImFont*          g_TitleFont         = nullptr;
+NexusLinkData_t* g_NexusLink         = nullptr;
 
 Serenade::MusicPlayer    g_Player;
 Serenade::PlaylistEditor g_PlaylistEditor;
@@ -67,10 +67,6 @@ static void EnsureMusicDirs() {
     try { std::filesystem::create_directories(g_SongsDirectory); } catch (...) {}
 }
 
-static void OnTitleFontReceived(const char* aIdentifier, void* aFont) {
-    g_TitleFont = (ImFont*)aFont;
-}
-
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH: hSelf = hModule; break;
@@ -84,6 +80,8 @@ void AddonLoad(AddonAPI_t* aApi) {
     ImGui::SetCurrentContext((ImGuiContext*)APIDefs->ImguiContext);
     ImGui::SetAllocatorFunctions((void* (*)(size_t, void*))APIDefs->ImguiMalloc,
                                  (void(*)(void*, void*))APIDefs->ImguiFree);
+
+    g_NexusLink = (NexusLinkData_t*)APIDefs->DataLink_Get(DL_NEXUS_LINK);
 
     BuildGW2Theme();
     g_Player.SetMumbleLink((Mumble::Data*)APIDefs->DataLink_Get(DL_MUMBLE_LINK));
@@ -132,9 +130,6 @@ void AddonLoad(AddonAPI_t* aApi) {
     APIDefs->GUI_RegisterCloseOnEscape("Serenade - Playlist Editor", g_PlaylistEditor.GetVisiblePtr());
     APIDefs->GUI_RegisterCloseOnEscape("Download Music", g_PlaylistEditor.GetDownloadWindowVisiblePtr());
 
-    APIDefs->Fonts_AddFromFile("SERENADE_TITLE", ImGui::GetFontSize() * 2.0f,
-        "C:\\Windows\\Fonts\\segoeui.ttf", OnTitleFontReceived, nullptr);
-
     APIDefs->Log(LOGL_INFO, "Serenade", "Addon loaded successfully");
 }
 
@@ -158,9 +153,6 @@ void AddonUnload() {
     APIDefs->QuickAccess_Remove(QA_ID);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->GUI_Deregister(AddonRender);
-
-    APIDefs->Fonts_Release("SERENADE_TITLE", OnTitleFontReceived);
-    g_TitleFont = nullptr;
 
     APIDefs = nullptr;
 }

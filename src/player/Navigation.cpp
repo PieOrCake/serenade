@@ -44,7 +44,8 @@ void MusicPlayer::Stop() {
     m_ThreadStop.store(true);
     m_State.store(PlaybackState::Stopped);
 
-    if (m_Thread.joinable()) m_Thread.join();
+    if (m_Thread.joinable() && m_Thread.get_id() != std::this_thread::get_id())
+        m_Thread.join();
 
     m_CurrentEvent.store(0);
     m_CurrentOctave = Octave::Mid;

@@ -13,7 +13,7 @@ extern Serenade::PlaylistEditor g_PlaylistEditor;
 extern std::string g_SongsDirectory;
 extern std::string g_KeyConfigPath;
 extern std::string g_PlaylistPath;
-extern ImFont*     g_TitleFont;
+extern NexusLinkData_t* g_NexusLink;
 
 void RefreshSongLibrary();
 void ApplyQASetting(bool enabled);
