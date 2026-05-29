@@ -239,6 +239,12 @@ std::vector<Song> ScanMusicDirectory(const std::string& musicDir) {
             std::string ext = entry.path().extension().string();
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
+            if (ext == ".abc") {
+                for (auto& abcSong : LoadABCFile(entry.path().string()))
+                    if (abcSong.IsValid()) songs.push_back(std::move(abcSong));
+                continue;
+            }
+
             Song song;
             if      (ext == ".ahk") song = LoadAHKFile(entry.path().string());
             else if (ext == ".txt") song = LoadNotationFile(entry.path().string());

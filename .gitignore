@@ -37,3 +37,6 @@ tools/patch-remove.sh
 
 # Runtime directories (music/ is tracked for online song distribution)
 handover.md
+
+# LLM-specific working files (never commit)
+plans/

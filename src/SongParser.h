@@ -69,6 +69,14 @@ Song LoadNotationFile(const std::string& filepath, int bpm = 120);
 // Supports # metadata comment lines at the top of the file
 Song LoadAHKFile(const std::string& filepath);
 
+// Load a LotRO-style ABC notation file. One file may contain several tunes
+// (X: headers), each with one or more voices (V:); every tune/voice pair
+// becomes its own Song. Returns all valid songs found (empty on failure).
+std::vector<Song> LoadABCFile(const std::string& filepath);
+
+// Parse ABC content already read from disk. Exposed for testing.
+std::vector<Song> ParseABC(const std::string& content, const std::string& filepath = "");
+
 // Save a song to a .sng file
 bool SaveSongFile(const std::string& filepath, const Song& song);
 

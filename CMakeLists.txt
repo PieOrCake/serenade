@@ -59,6 +59,7 @@ set(SOURCES
     src/parsers/AHKParser.cpp
     src/parsers/NotationParser.cpp
     src/parsers/SongFiles.cpp
+    src/parsers/ABCParser.cpp
 
     ${IMGUI_SOURCES}
 )
@@ -70,6 +71,7 @@ set(HEADERS
     src/icons.h
     src/MusicPlayer.h
     src/SongParser.h
+    src/parsers/ABCParser_internal.h
     src/PlaylistEditor.h
     src/ui/GW2Theme.h
 )
