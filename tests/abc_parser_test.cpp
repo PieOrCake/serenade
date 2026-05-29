@@ -2,6 +2,7 @@
 #include "SongParser.h"
 #include "parsers/ABCParser_internal.h"
 #include <cstdio>
+#include <fstream>
 #include <string>
 
 using namespace Serenade;
@@ -205,6 +206,22 @@ static void test_single_voice_no_part() {
     CHECK(songs[0].part == "");
 }
 
+static void test_loadfile() {
+    const char* path = "/tmp/serenade_abc_sample.abc";
+    {
+        std::ofstream f(path);
+        f << "X:1\nT:Greensleeves\nC:Trad\nQ:1/4=90\nL:1/8\nM:3/4\nK:Am\n";
+        f << "A2 c2 d2 | e3 f e2 | d2 B,2 G,2 |\n";
+    }
+    auto songs = LoadABCFile(path);
+    CHECK(songs.size() == 1);
+    CHECK(songs[0].title == "Greensleeves");
+    CHECK(songs[0].author == "Trad");
+    CHECK(songs[0].bpm == 90);
+    CHECK(!songs[0].events.empty());
+    std::remove(path);
+}
+
 int main() {
     test_pitch_mapping();
     test_key_signature();
@@ -221,6 +238,7 @@ int main() {
     test_multi_tune();
     test_multi_voice();
     test_single_voice_no_part();
+    test_loadfile();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;
