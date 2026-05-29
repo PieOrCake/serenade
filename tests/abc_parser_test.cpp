@@ -178,6 +178,33 @@ static void test_chords() {
     CHECK(e[1].type == EventType::Note && e[1].keys[0] == 2);
 }
 
+static void test_multi_tune() {
+    auto songs = ParseABC(
+        "X:1\nT:One\nK:C\nC\n"
+        "X:2\nT:Two\nK:C\nD\n");
+    CHECK(songs.size() == 2);
+    CHECK(songs[0].title == "One" && songs[0].events[0].keys[0] == 1);
+    CHECK(songs[1].title == "Two" && songs[1].events[0].keys[0] == 2);
+}
+
+static void test_multi_voice() {
+    auto songs = ParseABC(
+        "X:1\nT:Duet\nK:C\n"
+        "V:1\nCC\n"
+        "V:2\nGG\n");
+    CHECK(songs.size() == 2);
+    CHECK(songs[0].title == "Duet" && songs[0].part == "1");
+    CHECK(songs[0].events[0].keys[0] == 1);
+    CHECK(songs[1].part == "2");
+    CHECK(songs[1].events[0].keys[0] == 5);
+}
+
+static void test_single_voice_no_part() {
+    auto songs = ParseABC("X:1\nT:Solo\nK:C\nCDE\n");
+    CHECK(songs.size() == 1);
+    CHECK(songs[0].part == "");
+}
+
 int main() {
     test_pitch_mapping();
     test_key_signature();
@@ -191,6 +218,9 @@ int main() {
     test_first_note_high_octave();
     test_no_key_field();
     test_chords();
+    test_multi_tune();
+    test_multi_voice();
+    test_single_voice_no_part();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;
