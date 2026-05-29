@@ -139,6 +139,34 @@ static void test_tie_and_broken() {
     CHECK(br[0].events[1].durationBeats == 0.5f);
 }
 
+static void test_readlength_via_durations() {
+    // Lock in length-token parsing through ParseABC durations (L:1/4 -> quarter = 1.0 beat).
+    auto s = ParseABC("X:1\nL:1/4\nK:C\nC C/2 C/ C// C3/2 C3/2/2\n");
+    const auto& e = s[0].events;
+    CHECK(e.size() == 6);
+    CHECK(e[0].durationBeats == 1.0f);    // C    -> 1 * 1/4 * 4
+    CHECK(e[1].durationBeats == 0.5f);    // C/2
+    CHECK(e[2].durationBeats == 0.5f);    // C/
+    CHECK(e[3].durationBeats == 0.25f);   // C//  -> 1/4
+    CHECK(e[4].durationBeats == 1.5f);    // C3/2
+    CHECK(e[5].durationBeats == 0.75f);   // C3/2/2 -> 3/4
+}
+
+static void test_first_note_high_octave() {
+    // A voice that starts in the High octave must emit an OctaveSet before the first note.
+    auto s = ParseABC("X:1\nK:C\nc\n");
+    const auto& e = s[0].events;
+    CHECK(e.size() == 2);
+    CHECK(e[0].type == EventType::OctaveSet && e[0].targetOctave == Octave::High);
+    CHECK(e[1].type == EventType::Note && e[1].keys[0] == 1);
+}
+
+static void test_no_key_field() {
+    // A tune with no K: line still parses (defaults to C major / no accidentals).
+    auto s = ParseABC("X:1\nT:NoKey\nK:C\nC\n");
+    CHECK(s.size() == 1 && s[0].events.size() == 1 && s[0].events[0].keys[0] == 1);
+}
+
 int main() {
     test_pitch_mapping();
     test_key_signature();
@@ -148,6 +176,9 @@ int main() {
     test_key_and_accidentals();
     test_durations_rests();
     test_tie_and_broken();
+    test_readlength_via_durations();
+    test_first_note_high_octave();
+    test_no_key_field();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;
