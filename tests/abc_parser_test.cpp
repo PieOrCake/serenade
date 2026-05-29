@@ -78,10 +78,76 @@ static void test_tempo_and_length() {
     CHECK(ParseNoteLength("")     == 0.0);
 }
 
+static void test_notes_basic() {
+    // No L:, no M: -> default length 1/8 -> each note 0.5 beats.
+    auto songs = ParseABC("X:1\nT:Scale\nK:C\nCDE\n");
+    CHECK(songs.size() == 1);
+    CHECK(songs[0].title == "Scale");
+    CHECK(songs[0].events.size() == 3);
+    CHECK(songs[0].events[0].type == EventType::Note && songs[0].events[0].keys.size() == 1
+          && songs[0].events[0].keys[0] == 1);
+    CHECK(songs[0].events[1].keys[0] == 2);
+    CHECK(songs[0].events[2].keys[0] == 3);
+    CHECK(songs[0].events[0].durationBeats == 0.5f);
+}
+
+static void test_octave_changes() {
+    auto songs = ParseABC("X:1\nK:C\nCcC,\n");
+    CHECK(songs.size() == 1);
+    const auto& e = songs[0].events;
+    // C (Mid, no octave set), c -> OctaveSet High + Note, C, -> OctaveSet Low + Note
+    CHECK(e.size() == 5);
+    CHECK(e[0].type == EventType::Note     && e[0].keys[0] == 1);
+    CHECK(e[1].type == EventType::OctaveSet && e[1].targetOctave == Octave::High);
+    CHECK(e[2].type == EventType::Note     && e[2].keys[0] == 1);
+    CHECK(e[3].type == EventType::OctaveSet && e[3].targetOctave == Octave::Low);
+    CHECK(e[4].type == EventType::Note     && e[4].keys[0] == 1);
+}
+
+static void test_key_and_accidentals() {
+    auto g = ParseABC("X:1\nK:G\nF\n");
+    CHECK(g[0].events[0].keys[0] == 11);   // F# -> key 11
+
+    auto bar = ParseABC("X:1\nK:C\n^F F | F\n");
+    CHECK(bar[0].events.size() == 3);
+    CHECK(bar[0].events[0].keys[0] == 11); // ^F
+    CHECK(bar[0].events[1].keys[0] == 11); // F still sharp in same bar
+    CHECK(bar[0].events[2].keys[0] == 4);  // F natural after bar
+
+    auto flat = ParseABC("X:1\nK:C\n_E\n");
+    CHECK(flat[0].events[0].keys[0] == 10); // Eb -> D#
+}
+
+static void test_durations_rests() {
+    auto s = ParseABC("X:1\nL:1/4\nK:C\nC2 D z E2\n");
+    const auto& e = s[0].events;
+    CHECK(e.size() == 4);
+    CHECK(e[0].type == EventType::Note && e[0].durationBeats == 2.0f);
+    CHECK(e[1].type == EventType::Note && e[1].durationBeats == 1.0f);
+    CHECK(e[2].type == EventType::Rest && e[2].durationBeats == 1.0f);
+    CHECK(e[3].type == EventType::Note && e[3].durationBeats == 2.0f);
+}
+
+static void test_tie_and_broken() {
+    auto tie = ParseABC("X:1\nL:1/4\nK:C\nC- C D\n");
+    CHECK(tie[0].events.size() == 2);
+    CHECK(tie[0].events[0].keys[0] == 1 && tie[0].events[0].durationBeats == 2.0f);
+    CHECK(tie[0].events[1].keys[0] == 2 && tie[0].events[1].durationBeats == 1.0f);
+
+    auto br = ParseABC("X:1\nL:1/4\nK:C\nC>D\n");
+    CHECK(br[0].events[0].durationBeats == 1.5f);
+    CHECK(br[0].events[1].durationBeats == 0.5f);
+}
+
 int main() {
     test_pitch_mapping();
     test_key_signature();
     test_tempo_and_length();
+    test_notes_basic();
+    test_octave_changes();
+    test_key_and_accidentals();
+    test_durations_rests();
+    test_tie_and_broken();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;
