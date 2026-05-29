@@ -39,8 +39,35 @@ static void test_pitch_mapping() {
     KeyPos fold = SemitoneToKey(25); CHECK(fold.octave == Octave::High && fold.key == 9);
 }
 
+static void test_key_signature() {
+    auto cmaj = ParseKeySignature("C");
+    CHECK(cmaj.empty());
+
+    auto gmaj = ParseKeySignature("G");      // 1 sharp: F
+    CHECK(gmaj.size() == 1 && gmaj['F'] == 1);
+
+    auto dmaj = ParseKeySignature("D");      // 2 sharps: F, C
+    CHECK(dmaj['F'] == 1 && dmaj['C'] == 1 && dmaj.size() == 2);
+
+    auto fmaj = ParseKeySignature("F");      // 1 flat: B
+    CHECK(fmaj.size() == 1 && fmaj['B'] == -1);
+
+    auto bbmaj = ParseKeySignature("Bb");    // 2 flats: B, E
+    CHECK(bbmaj['B'] == -1 && bbmaj['E'] == -1 && bbmaj.size() == 2);
+
+    auto amin = ParseKeySignature("Am");     // relative to C: no accidentals
+    CHECK(amin.empty());
+
+    auto emin = ParseKeySignature("Em");     // 1 sharp: F
+    CHECK(emin.size() == 1 && emin['F'] == 1);
+
+    auto unknown = ParseKeySignature("HP");  // exotic -> treat as none
+    CHECK(unknown.empty());
+}
+
 int main() {
     test_pitch_mapping();
+    test_key_signature();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;
