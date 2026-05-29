@@ -65,9 +65,23 @@ static void test_key_signature() {
     CHECK(unknown.empty());
 }
 
+static void test_tempo_and_length() {
+    CHECK(ParseTempoToQuarterBPM("1/4=120") == 120);
+    CHECK(ParseTempoToQuarterBPM("1/8=120") == 60);
+    CHECK(ParseTempoToQuarterBPM("100")     == 100);
+    CHECK(ParseTempoToQuarterBPM("\"Allegro\" 1/4=90") == 90);
+    CHECK(ParseTempoToQuarterBPM("garbage")  == 120);  // fallback
+
+    CHECK(ParseNoteLength("1/8")  == 0.125);
+    CHECK(ParseNoteLength("1/16") == 0.0625);
+    CHECK(ParseNoteLength("1/4")  == 0.25);
+    CHECK(ParseNoteLength("")     == 0.0);
+}
+
 int main() {
     test_pitch_mapping();
     test_key_signature();
+    test_tempo_and_length();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;

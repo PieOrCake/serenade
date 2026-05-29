@@ -85,5 +85,54 @@ std::map<char, int> ParseKeySignature(const std::string& keyField) {
     return acc;
 }
 
+int ParseTempoToQuarterBPM(const std::string& tempoField) {
+    std::string s;
+    bool inQuote = false;
+    for (char c : tempoField) {
+        if (c == '"') { inQuote = !inQuote; continue; }
+        if (!inQuote) s += c;
+    }
+
+    double beatUnit = 0.25;  // assume quarter-note beat
+    double bpm = 0.0;
+    size_t eq = s.find('=');
+    if (eq != std::string::npos) {
+        std::string left  = s.substr(0, eq);
+        std::string right = s.substr(eq + 1);
+        size_t slash = left.find('/');
+        if (slash != std::string::npos) {
+            try {
+                double num = std::stod(left.substr(0, slash));
+                double den = std::stod(left.substr(slash + 1));
+                if (den != 0) beatUnit = num / den;
+            } catch (...) {}
+        }
+        try { bpm = std::stod(right); } catch (...) {}
+    } else {
+        try { bpm = std::stod(s); } catch (...) {}
+    }
+
+    if (bpm <= 0) return 120;
+    long q = std::lround(bpm * (beatUnit / 0.25));
+    return q > 0 ? (int)q : 120;
+}
+
+double ParseNoteLength(const std::string& lengthField) {
+    std::string s;
+    for (char c : lengthField)
+        if (!std::isspace((unsigned char)c)) s += c;
+    size_t slash = s.find('/');
+    try {
+        if (slash != std::string::npos) {
+            double num = std::stod(s.substr(0, slash));
+            double den = std::stod(s.substr(slash + 1));
+            if (den != 0) return num / den;
+        } else if (!s.empty()) {
+            return std::stod(s);
+        }
+    } catch (...) {}
+    return 0.0;
+}
+
 } // namespace abc
 } // namespace Serenade
