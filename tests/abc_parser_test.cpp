@@ -167,6 +167,17 @@ static void test_no_key_field() {
     CHECK(s.size() == 1 && s[0].events.size() == 1 && s[0].events[0].keys[0] == 1);
 }
 
+static void test_chords() {
+    auto s = ParseABC("X:1\nL:1/4\nK:C\n[CEG]2 D\n");
+    const auto& e = s[0].events;
+    CHECK(e.size() == 2);
+    CHECK(e[0].type == EventType::Chord);
+    CHECK(e[0].keys.size() == 3);
+    CHECK(e[0].keys[0] == 1 && e[0].keys[1] == 3 && e[0].keys[2] == 5);  // C E G
+    CHECK(e[0].durationBeats == 2.0f);
+    CHECK(e[1].type == EventType::Note && e[1].keys[0] == 2);
+}
+
 int main() {
     test_pitch_mapping();
     test_key_signature();
@@ -179,6 +190,7 @@ int main() {
     test_readlength_via_durations();
     test_first_note_high_octave();
     test_no_key_field();
+    test_chords();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;

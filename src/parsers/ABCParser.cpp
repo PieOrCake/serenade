@@ -241,6 +241,43 @@ void ParseVoiceBody(const std::string& body, const std::map<char, int>& keyAcc,
             continue;
         }
 
+        // chord: [CEG] with optional length after ]
+        if (c == '[') {
+            size_t j = i + 1;
+            std::vector<int> semis;
+            while (j < n && body[j] != ']') {
+                if (std::isspace((unsigned char)body[j])) { j++; continue; }
+                int semi;
+                if (ParsePitch(body, j, barAcc, keyAcc, semi)) semis.push_back(semi);
+                else j++;  // skip stray char inside chord
+            }
+            if (j < n) j++;  // consume ']'
+            i = j;
+            double mult = ReadLength(body, i);
+            float beats = (float)(mult * defaultLen * 4.0 * brokenNextFactor);
+            brokenNextFactor = 1.0;
+            if (semis.empty()) continue;
+
+            // Octave is a global shift, so anchor the chord on its lowest note.
+            int lowest = semis[0];
+            for (int sv : semis) if (sv < lowest) lowest = sv;
+            ensureOctave(SemitoneToKey(lowest).octave);
+
+            std::vector<int> keys;
+            for (int sv : semis) keys.push_back(SemitoneToKey(sv).key);
+
+            NoteEvent ev;
+            ev.type = (keys.size() > 1) ? EventType::Chord : EventType::Note;
+            ev.keys = std::move(keys);
+            ev.durationBeats = beats;
+            ev.targetOctave = currentOctave;
+            events.push_back(ev);
+            prevNoteIdx = events.size() - 1;
+            prevNoteSemitone = INT_MIN;  // chords don't tie
+            tiePending = false;
+            continue;
+        }
+
         // bar lines / repeats reset in-bar accidentals
         if (c == '|' || c == ':') {
             barAcc.clear();
