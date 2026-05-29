@@ -1,4 +1,4 @@
-// <climits>/<cmath>/<filesystem> etc. are used by parsing logic added in later tasks
+// ABC notation parser — pitch mapping, key signatures, tempo, durations, and song assembly.
 #include "SongParser.h"
 #include "parsers/ABCParser_internal.h"
 #include <fstream>
@@ -436,6 +436,11 @@ std::vector<Song> ParseABC(const std::string& content, const std::string& filepa
         }
     }
 
+    // File-level defaults: Q/L/M/K fields that appear before the first X: line.
+    struct FileDefaults { std::string qField, lField, mField, keyField; };
+    FileDefaults fileDefaults;
+    bool defaultsCaptured = false;
+
     TuneBuilder tune;
     std::string currentVoice = "1";
 
@@ -448,8 +453,18 @@ std::vector<Song> ParseABC(const std::string& content, const std::string& filepa
         if (t.empty()) continue;
 
         if (t.size() >= 2 && (t[0] == 'X' || t[0] == 'x') && t[1] == ':') {
-            tune.emit(out, filepath);
+            if (!tune.sawX && !defaultsCaptured) {
+                // The builder accumulated pre-X: fields — save them as defaults.
+                fileDefaults = { tune.qField, tune.lField, tune.mField, tune.keyField };
+                defaultsCaptured = true;
+            } else {
+                tune.emit(out, filepath);
+            }
             tune = TuneBuilder();
+            tune.qField    = fileDefaults.qField;
+            tune.lField    = fileDefaults.lField;
+            tune.mField    = fileDefaults.mField;
+            tune.keyField  = fileDefaults.keyField;
             tune.sawX = true;
             currentVoice = "1";
             continue;

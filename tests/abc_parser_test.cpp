@@ -222,6 +222,19 @@ static void test_loadfile() {
     std::remove(path);
 }
 
+static void test_file_level_defaults() {
+    // Q: and L: before the first X: should apply to every tune that doesn't override them.
+    auto songs = ParseABC(
+        "Q:1/4=140\nL:1/4\n"
+        "X:1\nT:A\nK:C\nC\n"
+        "X:2\nT:B\nL:1/8\nK:C\nC\n");   // tune 2 overrides L
+    CHECK(songs.size() == 2);
+    CHECK(songs[0].bpm == 140);
+    CHECK(songs[0].events[0].durationBeats == 1.0f);  // L:1/4 default -> quarter = 1 beat
+    CHECK(songs[1].bpm == 140);                        // inherits Q
+    CHECK(songs[1].events[0].durationBeats == 0.5f);   // its own L:1/8 -> 0.5
+}
+
 int main() {
     test_pitch_mapping();
     test_key_signature();
@@ -239,6 +252,7 @@ int main() {
     test_multi_voice();
     test_single_voice_no_part();
     test_loadfile();
+    test_file_level_defaults();
     if (g_failures == 0) { std::printf("ALL TESTS PASSED\n"); return 0; }
     std::printf("%d CHECK(S) FAILED\n", g_failures);
     return 1;
