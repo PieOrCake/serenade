@@ -1,3 +1,4 @@
+// Build & run: g++ -std=c++17 -I src tests/abc_parser_test.cpp src/parsers/ABCParser.cpp -o /tmp/abc_test && /tmp/abc_test
 #include "SongParser.h"
 #include "parsers/ABCParser_internal.h"
 #include <cstdio>
@@ -17,8 +18,15 @@ static int g_failures = 0;
 
 static void test_pitch_mapping() {
     CHECK(LetterPitchClass('C') == 0);
+    CHECK(LetterPitchClass('D') == 2);
+    CHECK(LetterPitchClass('E') == 4);
+    CHECK(LetterPitchClass('F') == 5);
+    CHECK(LetterPitchClass('G') == 7);
+    CHECK(LetterPitchClass('A') == 9);
     CHECK(LetterPitchClass('B') == 11);
     CHECK(LetterPitchClass('z') == -1);
+    // lowercase should return the same pitch class as uppercase
+    CHECK(LetterPitchClass('c') == 0);
 
     KeyPos c   = SemitoneToKey(0);   CHECK(c.octave   == Octave::Mid  && c.key == 1);
     KeyPos d   = SemitoneToKey(2);   CHECK(d.octave   == Octave::Mid  && d.key == 2);

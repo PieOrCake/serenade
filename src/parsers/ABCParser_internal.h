@@ -5,11 +5,12 @@
 #include <string>
 #include <map>
 
-namespace Serenade { namespace abc {
+namespace Serenade {
+namespace abc {
 
 struct KeyPos {
     Octave octave;  // Low / Mid / High
-    int key;        // 1-8 natural, 9-13 sharp
+    int key;        // 1-8 natural keys; 9-13 are the GW2 sharp keys (C# D# F# G# A#) reached via the F1-F5 row
 };
 
 // Map an ABC absolute semitone (uppercase C with no octave mark == 0) onto
@@ -30,6 +31,7 @@ int ParseTempoToQuarterBPM(const std::string& tempoField);
 // Parse an L: field (e.g. "1/8") to its fractional value (0.125). 0 on failure.
 double ParseNoteLength(const std::string& lengthField);
 
-}} // namespace Serenade::abc
+} // namespace abc
+} // namespace Serenade
 
 #endif
