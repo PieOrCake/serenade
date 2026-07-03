@@ -9,6 +9,7 @@
 #include "PlaylistEditor.h"
 #include "Addon.h"
 #include "ui/GW2Theme.h"
+#include "ui/PieTheme.h"
 #include "icons.h"
 
 #define V_MAJOR    0
@@ -114,6 +115,8 @@ void AddonLoad(AddonAPI_t* aApi) {
         APIDefs->Log(LOGL_WARNING, "Serenade", "GW2 window not found - playback will not send keys");
     }
 
+    PieTheme::Init();
+
     APIDefs->GUI_Register(RT_Render, AddonRender);
     APIDefs->GUI_Register(RT_OptionsRender, AddonOptions);
 
@@ -153,6 +156,8 @@ void AddonUnload() {
     APIDefs->QuickAccess_Remove(QA_ID);
     APIDefs->GUI_Deregister(AddonOptions);
     APIDefs->GUI_Deregister(AddonRender);
+
+    PieTheme::Shutdown();
 
     APIDefs = nullptr;
 }

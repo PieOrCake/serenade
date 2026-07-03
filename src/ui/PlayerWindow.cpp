@@ -1,5 +1,6 @@
 #include "Addon.h"
 #include "GW2Theme.h"
+#include "PieTheme.h"
 #include <cstdio>
 #include <cmath>
 
@@ -235,7 +236,9 @@ void AddonRender() {
 
         if (titleW <= regionW) {
             PUSH_TITLE_FONT();
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, PieTheme::Active()
+                ? ImGui::ColorConvertU32ToFloat4(PieTheme::Accent())
+                : ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
             ImGui::SetCursorPosX((availW - titleW) * 0.5f + padX);
             ImGui::Text("%s", song->title.c_str());
             ImGui::PopStyleColor();
@@ -271,7 +274,9 @@ void AddonRender() {
             ImGui::PushClipRect(clipMin, clipMax, true);
 
             PUSH_TITLE_FONT();
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_Text, PieTheme::Active()
+                ? ImGui::ColorConvertU32ToFloat4(PieTheme::Accent())
+                : ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
             ImGui::SetCursorPosX(padX - offsetX);
             ImGui::Text("%s", song->title.c_str());
             ImGui::PopStyleColor();
@@ -371,15 +376,24 @@ void AddonRender() {
         if (displayProgress > 0.001f) {
             float fillW = barW * (displayProgress < 1.0f ? displayProgress : 1.0f);
             if (fillW < barH) fillW = barH;
-            ImU32 colL = (barHovered || barActive) ? IM_COL32(210, 165, 60, 255) : IM_COL32(190, 145, 50, 255);
-            ImU32 colR = (barHovered || barActive) ? IM_COL32(250, 200, 90, 255) : IM_COL32(230, 185, 70, 255);
+            bool  hot = (barHovered || barActive);
+            ImU32 colL, colR;
+            if (PieTheme::Active()) {
+                colL = PieTheme::AccentScaled(hot ? 0.85f : 0.72f);
+                colR = PieTheme::AccentScaled(hot ? 1.10f : 0.92f);
+            } else {
+                colL = hot ? IM_COL32(210, 165, 60, 255) : IM_COL32(190, 145, 50, 255);
+                colR = hot ? IM_COL32(250, 200, 90, 255) : IM_COL32(230, 185, 70, 255);
+            }
             dl->AddRectFilledMultiColor(barPos, ImVec2(barPos.x + fillW, barPos.y + barH),
                                         colL, colR, colR, colL);
             dl->AddRectFilled(barPos, ImVec2(barPos.x + fillW, barPos.y + barH),
                               IM_COL32(0, 0, 0, 0), rounding);
-            if (barHovered || barActive) {
+            if (hot) {
+                ImU32 dotCol = PieTheme::Active() ? PieTheme::AccentScaled(1.20f)
+                                                  : IM_COL32(255, 220, 120, 255);
                 dl->AddCircleFilled(ImVec2(barPos.x + fillW, barPos.y + barH * 0.5f),
-                                    barH * 0.8f, IM_COL32(255, 220, 120, 255));
+                                    barH * 0.8f, dotCol);
             }
         }
     }
@@ -434,9 +448,10 @@ void AddonRender() {
 
     ImGui::SetCursorPosY(baseY);
     bool isPlaying = g_Player.IsPlaying();
-    ImU32 playBgN = IM_COL32(190, 145, 50, 255);
-    ImU32 playBgH = IM_COL32(220, 175, 70, 255);
-    ImU32 playBgA = IM_COL32(160, 120, 40, 255);
+    bool  piePlay = PieTheme::Active();
+    ImU32 playBgN = piePlay ? PieTheme::Accent()           : IM_COL32(190, 145, 50, 255);
+    ImU32 playBgH = piePlay ? PieTheme::AccentScaled(1.18f) : IM_COL32(220, 175, 70, 255);
+    ImU32 playBgA = piePlay ? PieTheme::AccentScaled(0.82f) : IM_COL32(160, 120, 40, 255);
     if (isPlaying) {
         if (CircleIconButton("##pp", playR, DrawIconPause, true, playBgN, playBgH, playBgA))
             g_Player.Pause();

@@ -164,6 +164,10 @@ public:
     void SetQAEnabled(bool enabled) { m_QAEnabled = enabled; }
     bool GetQAEnabled() const { return m_QAEnabled; }
 
+    // Match Pie UI's broadcast theme when that addon is present
+    void SetUsePieTheme(bool enabled) { m_UsePieTheme = enabled; }
+    bool GetUsePieTheme() const { return m_UsePieTheme; }
+
     // WndProc handle for sending keys
     void SetGameWindow(HWND hwnd) { m_GameWindow = hwnd; }
 
@@ -240,6 +244,7 @@ private:
 
     // Settings
     bool m_QAEnabled = true;
+    bool m_UsePieTheme = true;
 
     // Debug log (file kept open for session to avoid per-note open/close overhead)
     std::string m_DebugLogPath;

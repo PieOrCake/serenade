@@ -43,6 +43,7 @@ set(SOURCES
 
     # UI layer
     src/ui/GW2Theme.cpp
+    src/ui/PieTheme.cpp
     src/ui/PlayerWindow.cpp
     src/ui/OptionsPanel.cpp
     src/ui/PlaylistEditor.cpp

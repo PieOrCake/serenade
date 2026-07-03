@@ -83,6 +83,16 @@ void AddonOptions() {
         }
     }
 
+    {
+        bool usePie = g_Player.GetUsePieTheme();
+        if (ImGui::Checkbox("Use Pie UI theme (if available)", &usePie)) {
+            g_Player.SetUsePieTheme(usePie);
+            if (!g_KeyConfigPath.empty()) g_Player.SaveKeyConfig(g_KeyConfigPath);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Match Serenade's colours to the Pie UI addon's active theme when it is installed");
+    }
+
     ImGui::Spacing();
 
     ImGui::Text("Music directory:");

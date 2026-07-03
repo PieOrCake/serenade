@@ -1,4 +1,6 @@
 #include "GW2Theme.h"
+#include "PieTheme.h"
+#include "../Addon.h"
 #include <imgui.h>
 #include <vector>
 
@@ -98,7 +100,11 @@ void BuildGW2Theme() {
 
 void PushGW2Theme() {
     g_StyleStack.push_back(ImGui::GetStyle());
-    ImGui::GetStyle() = g_GW2Style;
+    ImGuiStyle s = g_GW2Style;
+    // Keep Serenade's geometry; borrow Pie UI's palette when active.
+    if (g_Player.GetUsePieTheme())
+        PieTheme::ApplyToStyle(s);   // no-op until a palette is received
+    ImGui::GetStyle() = s;
 }
 
 void PopGW2Theme() {

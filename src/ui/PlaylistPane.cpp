@@ -1,11 +1,14 @@
 #include "PlaylistEditor.h"
+#include "PieTheme.h"
 #include <imgui.h>
 #include <cmath>
 
 namespace Serenade {
 
 void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, PieTheme::Active()
+        ? ImGui::ColorConvertU32ToFloat4(PieTheme::Accent())
+        : ImVec4(1.0f, 0.85f, 0.3f, 1.0f));
     ImGui::Text("Playlist (%d tracks)", (int)player.GetPlaylistSize());
     ImGui::PopStyleColor();
     ImGui::Separator();
@@ -34,7 +37,8 @@ void PlaylistEditor::RenderPlaylistPane(MusicPlayer& player) {
         ImGui::TableHeadersRow();
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
-        const ImU32 dropLineCol       = IM_COL32(255, 215, 50, 255);
+        const ImU32 dropLineCol       = PieTheme::Active() ? PieTheme::Accent()
+                                                           : IM_COL32(255, 215, 50, 255);
         const float dropLineThickness = 3.0f;
 
         for (int i = 0; i < (int)playlist.size(); i++) {
