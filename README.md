@@ -96,6 +96,8 @@ Produces `build/Serenade.dll`.
 
 ## Serenade Addon License
 
+Serenade is licensed under the **GNU Lesser General Public License v3.0 (LGPLv3)** — see [LICENSE](LICENSE) (the LGPL incorporates the GPLv3 text in [LICENSE.GPL](LICENSE.GPL)).
+
 This software is provided as-is, with absolutely no warranty of any kind. Use at your own risk. It might delete your files, melt your PC, burn your house down, or cause world peace. Probably not that last one, but we can hope.
 
 
