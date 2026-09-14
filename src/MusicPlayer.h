@@ -43,6 +43,17 @@ enum class AnnounceChannel {
     Guild6,
 };
 
+// How playback keys reach the game.
+//
+// SendInput drives the OS input queue, which only ever lands in the foreground
+// window — so playback stops reaching GW2 the moment the user alt-tabs away.
+// The two message modes address the window directly and keep working unfocused.
+enum class InputMode {
+    SendInput = 0,   // OS input queue. Foreground only. Historic default.
+    PostMessage,     // Queued window message. Works unfocused; thread-safe by design.
+    NexusWndProc,    // Nexus WndProc_SendToGameOnly. Works unfocused; synchronous.
+};
+
 // Key configuration for instrument playback
 struct KeyConfig {
     WORD noteKeys[8];       // VK codes for notes 1-8 (C, D, E, F, G, A, B, C)
@@ -171,12 +182,23 @@ public:
     // WndProc handle for sending keys
     void SetGameWindow(HWND hwnd) { m_GameWindow = hwnd; }
 
+    // How keys are delivered to the game (see InputMode).
+    // Written from the render thread, read from the playback thread.
+    void SetInputMode(InputMode mode) { m_InputMode.store(mode); }
+    InputMode GetInputMode() const    { return m_InputMode.load(); }
+
     // Debug log (writes to file)
     void SetDebugLogPath(const std::string& path);
     void DebugLog(const std::string& msg);
 
 private:
     void PlaybackThread();
+    // Every playback key passes through these two. Do not call SendInput directly.
+    void SendKeyDown(WORD vk);
+    void SendKeyUp(WORD vk);
+    // True when GW2 is the foreground window, or when we never found its handle
+    // (in which case only SendInput is possible and the old behaviour applies).
+    bool GameIsForeground() const;
     void SendNoteKeys(const std::vector<int>& keys);
     void SendOctaveChange(Octave target);
     void SendChatMessage(const std::string& message);
@@ -230,6 +252,10 @@ private:
 
     // Game window handle
     HWND m_GameWindow = nullptr;
+
+    // Key delivery method. SendInput is the default: it is the only mode proven
+    // on native Windows, so the unfocused modes stay opt-in.
+    std::atomic<InputMode> m_InputMode{InputMode::SendInput};
 
     // Chat announcement
     bool m_AnnounceEnabled = false;

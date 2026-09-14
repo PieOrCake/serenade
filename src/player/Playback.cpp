@@ -1,24 +1,99 @@
 #include "MusicPlayer.h"
 #include <algorithm>
+#include "nexus/Nexus.h"
+
+// Nexus API table, owned by dllmain.cpp. Null until AddonLoad runs.
+extern AddonAPI_t* APIDefs;
 
 namespace Serenade {
 
-static void SendKeyDown(WORD vk) {
+// Builds the lParam a real WM_KEYDOWN/WM_KEYUP carries: scan code plus the
+// transition and previous-state bits. The message-based input modes need this;
+// SendInput fills it in itself.
+static LPARAM MakeLParam(uint32_t vk, bool down) {
+    int64_t lp = !down;
+    lp = lp << 1;
+    lp += !down;
+    lp = lp << 1;
+    lp += 0;
+    lp = lp << 1;
+    lp = lp << 4;
+    lp = lp << 1;
+    lp = lp << 8;
+    lp += MapVirtualKeyA(vk, MAPVK_VK_TO_VSC);
+    lp = lp << 16;
+    lp += 1;
+    return (LPARAM)lp;
+}
+
+// Delivers one key transition to the game via the OS input queue.
+// Foreground-only — this is what the message modes fall back to.
+static void SendKeyViaInput(WORD vk, bool down) {
     INPUT input = {};
     input.type = INPUT_KEYBOARD;
     input.ki.wVk = vk;
     input.ki.wScan = (WORD)MapVirtualKeyA(vk, MAPVK_VK_TO_VSC);
-    input.ki.dwFlags = 0;
+    input.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
     SendInput(1, &input, sizeof(INPUT));
 }
 
-static void SendKeyUp(WORD vk) {
-    INPUT input = {};
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = vk;
-    input.ki.wScan = (WORD)MapVirtualKeyA(vk, MAPVK_VK_TO_VSC);
-    input.ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(1, &input, sizeof(INPUT));
+// The single point every playback key passes through.
+//
+// Both message modes address the game window directly, so they keep working
+// while the user is in another window. Each falls back to SendInput rather than
+// dropping the key if its prerequisites are missing — a silently swallowed key
+// is a wrong note, which is worse than a note sent the old way.
+void MusicPlayer::SendKeyDown(WORD vk) {
+    LPARAM lp = MakeLParam(vk, true);
+
+    switch (m_InputMode.load()) {
+    case InputMode::NexusWndProc:
+        if (m_GameWindow && APIDefs && APIDefs->WndProc_SendToGameOnly) {
+            APIDefs->WndProc_SendToGameOnly(m_GameWindow, WM_KEYDOWN, (WPARAM)vk, lp);
+            return;
+        }
+        break;
+    case InputMode::PostMessage:
+        if (m_GameWindow) {
+            PostMessageA(m_GameWindow, WM_KEYDOWN, (WPARAM)vk, lp);
+            return;
+        }
+        break;
+    case InputMode::SendInput:
+        break;
+    }
+
+    SendKeyViaInput(vk, true);
+}
+
+void MusicPlayer::SendKeyUp(WORD vk) {
+    LPARAM lp = MakeLParam(vk, false);
+
+    switch (m_InputMode.load()) {
+    case InputMode::NexusWndProc:
+        if (m_GameWindow && APIDefs && APIDefs->WndProc_SendToGameOnly) {
+            APIDefs->WndProc_SendToGameOnly(m_GameWindow, WM_KEYUP, (WPARAM)vk, lp);
+            return;
+        }
+        break;
+    case InputMode::PostMessage:
+        if (m_GameWindow) {
+            PostMessageA(m_GameWindow, WM_KEYUP, (WPARAM)vk, lp);
+            return;
+        }
+        break;
+    case InputMode::SendInput:
+        break;
+    }
+
+    SendKeyViaInput(vk, false);
+}
+
+// GW2 in front, or no window handle at all. With no handle only SendInput can
+// run, so the focus-sensitive guards must stay armed exactly as before.
+bool MusicPlayer::GameIsForeground() const {
+    if (!m_GameWindow) return true;
+    return GetForegroundWindow() == m_GameWindow;
 }
 
 void MusicPlayer::SendNoteKeys(const std::vector<int>& keys) {
@@ -52,63 +127,32 @@ void MusicPlayer::SendOctaveChange(Octave target) {
 
     WORD downVk   = m_KeyConfig.octaveDownKey;
     WORD upVk     = m_KeyConfig.octaveUpKey;
-    WORD downScan = (WORD)MapVirtualKeyA(downVk, MAPVK_VK_TO_VSC);
-    WORD upScan   = (WORD)MapVirtualKeyA(upVk,   MAPVK_VK_TO_VSC);
 
     int upPresses = static_cast<int>(target);
 
-    // Batch 1: reset to Low (3x key 9, clamps harmlessly)
-    INPUT downInputs[6] = {};
+    // These runs used to go out as batched SendInput arrays. The message modes
+    // cannot batch, so they are sent one key at a time instead. Ordering still
+    // holds: WndProc_SendToGameOnly is synchronous, and PostMessage preserves
+    // order within a thread's message queue.
+
+    // Run 1: reset to Low (3x octave-down, clamps harmlessly)
     for (int i = 0; i < 3; i++) {
-        downInputs[i * 2].type             = INPUT_KEYBOARD;
-        downInputs[i * 2].ki.wVk           = downVk;
-        downInputs[i * 2].ki.wScan         = downScan;
-        downInputs[i * 2].ki.dwFlags       = 0;
-        downInputs[i * 2 + 1].type         = INPUT_KEYBOARD;
-        downInputs[i * 2 + 1].ki.wVk       = downVk;
-        downInputs[i * 2 + 1].ki.wScan     = downScan;
-        downInputs[i * 2 + 1].ki.dwFlags   = KEYEVENTF_KEYUP;
+        SendKeyDown(downVk);
+        SendKeyUp(downVk);
     }
-    SendInput(6, downInputs, sizeof(INPUT));
 
     if (upPresses > 0) {
         Sleep(20);
 
-        // Batch 2: go up to target (1-2x key 0)
-        std::vector<INPUT> upInputs(upPresses * 2);
+        // Run 2: go up to target (1-2x octave-up)
         for (int i = 0; i < upPresses; i++) {
-            upInputs[i * 2] = {};
-            upInputs[i * 2].type         = INPUT_KEYBOARD;
-            upInputs[i * 2].ki.wVk       = upVk;
-            upInputs[i * 2].ki.wScan     = upScan;
-            upInputs[i * 2].ki.dwFlags   = 0;
-            upInputs[i * 2 + 1] = {};
-            upInputs[i * 2 + 1].type       = INPUT_KEYBOARD;
-            upInputs[i * 2 + 1].ki.wVk     = upVk;
-            upInputs[i * 2 + 1].ki.wScan   = upScan;
-            upInputs[i * 2 + 1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendKeyDown(upVk);
+            SendKeyUp(upVk);
         }
-        SendInput((UINT)upInputs.size(), upInputs.data(), sizeof(INPUT));
     }
 
     Sleep(10);
     m_CurrentOctave = target;
-}
-
-static LPARAM MakeLParam(uint32_t vk, bool down) {
-    int64_t lp = !down;
-    lp = lp << 1;
-    lp += !down;
-    lp = lp << 1;
-    lp += 0;
-    lp = lp << 1;
-    lp = lp << 4;
-    lp = lp << 1;
-    lp = lp << 8;
-    lp += MapVirtualKeyA(vk, MAPVK_VK_TO_VSC);
-    lp = lp << 16;
-    lp += 1;
-    return (LPARAM)lp;
 }
 
 static bool CopyToOsClipboard(HWND hwnd, const std::string& utf8) {
@@ -146,6 +190,17 @@ static const char* ChannelPrefix(AnnounceChannel ch) {
 
 void MusicPlayer::SendChatMessage(const std::string& message) {
     if (message.empty() || m_Unloading) return;
+
+    // Skipped when GW2 is not in front. This function holds Ctrl down with
+    // SendInput (which lands in the foreground window) while sending the paste
+    // to the game as a message. Run unfocused, it would press and hold Ctrl in
+    // whatever app the user is actually using. Announcing unfocused would need
+    // the modifier moved onto the message path too; that is a separate change.
+    if (!GameIsForeground()) {
+        DebugLog("Chat announce skipped: GW2 is not the foreground window");
+        return;
+    }
+
     DebugLog("Chat announce: " + message);
 
     HWND game = m_GameWindow;
@@ -281,6 +336,14 @@ void MusicPlayer::PlaybackThread() {
     }
     double pauseOffset = 0.0;
 
+    // Chat protection (the GetAsyncKeyState(VK_RETURN) checks below) is gated on
+    // GameIsForeground(). GetAsyncKeyState is a global keyboard read that ignores
+    // focus; now that playback survives alt-tab, an ungated check would pause the
+    // song when the user pressed Enter in a browser or terminal, with no visible
+    // cause. The guard still does its real job of keeping notes out of game chat.
+    //
+    // The combat check needs no such gate: it reads the game's own MumbleLink
+    // state, not the keyboard, so nothing outside GW2 can trigger it.
     auto inCombat = [&]() -> bool {
         return m_MumbleLink && m_MumbleLink->Context.IsInCombat;
     };
@@ -296,7 +359,7 @@ void MusicPlayer::PlaybackThread() {
                 int slept = 0;
                 while (slept < sleepMs && !m_ThreadStop.load() &&
                        m_State.load() == PlaybackState::Playing) {
-                    if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
+                    if (GameIsForeground() && (GetAsyncKeyState(VK_RETURN) & 0x8000)) {
                         DebugLog("Enter key detected — pausing playback (chat protection)");
                         Pause();
                         return false;
@@ -312,7 +375,7 @@ void MusicPlayer::PlaybackThread() {
                 }
             }
             while (!m_ThreadStop.load() && m_State.load() == PlaybackState::Playing) {
-                if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
+                if (GameIsForeground() && (GetAsyncKeyState(VK_RETURN) & 0x8000)) {
                     DebugLog("Enter key detected — pausing playback (chat protection)");
                     Pause();
                     return false;
@@ -425,7 +488,7 @@ void MusicPlayer::PlaybackThread() {
                     DebugLog("=== Inter-song gap: waiting 3 seconds ===");
                     for (int waited = 0; waited < 3000 && !m_ThreadStop.load(); waited += 10) {
                         if (m_State.load() != PlaybackState::Playing) break;
-                        if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
+                        if (GameIsForeground() && (GetAsyncKeyState(VK_RETURN) & 0x8000)) {
                             DebugLog("Enter key detected — pausing playback (chat protection)");
                             Pause();
                             break;
@@ -453,7 +516,7 @@ void MusicPlayer::PlaybackThread() {
         while (eventIdx < (int)song->events.size() &&
                song->events[eventIdx].durationBeats == 0.0f &&
                !m_ThreadStop.load()) {
-            if (GetAsyncKeyState(VK_RETURN) & 0x8000) {
+            if (GameIsForeground() && (GetAsyncKeyState(VK_RETURN) & 0x8000)) {
                 DebugLog("Enter key detected — pausing playback (chat protection)");
                 Pause();
                 break;

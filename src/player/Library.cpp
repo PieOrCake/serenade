@@ -279,6 +279,7 @@ void MusicPlayer::SaveKeyConfig(const std::string& filepath) const {
     file << "announce_channel="  << static_cast<int>(m_AnnounceChannel) << "\n";
     file << "qa_enabled="        << (m_QAEnabled ? 1 : 0) << "\n";
     file << "pie_theme="         << (m_UsePieTheme ? 1 : 0) << "\n";
+    file << "input_mode="        << static_cast<int>(m_InputMode.load()) << "\n";
 }
 
 void MusicPlayer::LoadKeyConfig(const std::string& filepath) {
@@ -316,6 +317,9 @@ void MusicPlayer::LoadKeyConfig(const std::string& filepath) {
             m_QAEnabled = (val != 0);
         } else if (key == "pie_theme") {
             m_UsePieTheme = (val != 0);
+        } else if (key == "input_mode") {
+            if (val >= 0 && val <= static_cast<int>(InputMode::NexusWndProc))
+                m_InputMode.store(static_cast<InputMode>(val));
         }
     }
 }

@@ -94,6 +94,39 @@ void AddonOptions() {
     }
 
     ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    {
+        ImGui::Text("Key delivery");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+        ImGui::TextWrapped(
+            "How Serenade presses the instrument keys. The two \"keep playing unfocused\" "
+            "modes let a song carry on while you are in another window. They are tested on "
+            "Linux/Wine only so far, so the default stays on the original method.");
+        ImGui::PopStyleColor();
+
+        static const char* kInputModeNames[] = {
+            "Standard (stops when GW2 loses focus)",
+            "Keep playing unfocused - PostMessage",
+            "Keep playing unfocused - Nexus",
+        };
+        int mode = static_cast<int>(g_Player.GetInputMode());
+        ImGui::SetNextItemWidth(320);
+        if (ImGui::Combo("##input_mode", &mode, kInputModeNames, IM_ARRAYSIZE(kInputModeNames))) {
+            g_Player.SetInputMode(static_cast<Serenade::InputMode>(mode));
+            if (!g_KeyConfigPath.empty()) g_Player.SaveKeyConfig(g_KeyConfigPath);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "Standard: keys go through Windows input - only reaches GW2 while it is in front.\n"
+                "PostMessage: sends keys straight to the GW2 window. Try this one first.\n"
+                "Nexus: sends keys via the Nexus host. Use if PostMessage does not work for you.\n\n"
+                "While unfocused, chat announcements are skipped and the Enter-key chat\n"
+                "protection only reacts to Enter pressed in GW2 itself.");
+    }
+
+    ImGui::Spacing();
 
     ImGui::Text("Music directory:");
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
